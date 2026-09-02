@@ -1,0 +1,54 @@
+services:
+  analysis-service:
+    build:
+      context: .
+      dockerfile: services/analysis/Dockerfile
+    environment:
+      WINDOW_FEATURES_CSV: /data/window_features.csv
+      SYNCHRONIZED_TIMESERIES_CSV: /data/synchronized_timeseries.csv
+      FBG_VALIDITY_THRESHOLD: ${FBG_VALIDITY_THRESHOLD:-0.80}
+    volumes:
+      - ./data:/data:ro
+    expose:
+      - "8001"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - restricted-backend
+
+  agent-service:
+    build:
+      context: .
+      dockerfile: services/agent/Dockerfile
+    environment:
+      ANALYSIS_BASE_URL: http://analysis-service:8001
+      LLM_MODE: ${LLM_MODE:-heuristic}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
+      AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-6}
+      AUDIT_LOG_PATH: /app/runtime/audit.jsonl
+    volumes:
+      - ./runtime:/app/runtime
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      analysis-service:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - restricted-backend
+
+networks:
+  restricted-backend:
+    driver: bridge
+
