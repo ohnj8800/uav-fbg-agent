@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from abc import ABC, abstractmethod
 from typing import Any
 from urllib.error import URLError
@@ -32,6 +33,19 @@ class Planner(ABC):
             "model": self.model_name,
             "reachable": True,
             "ready": True,
+        }
+
+    def begin_request(self) -> None:
+        """Reset request-local runtime metadata before one interpretation."""
+
+    def runtime_metadata(self) -> dict[str, Any]:
+        return {
+            "llm_attempts": 0,
+            "llm_successes": 0,
+            "llm_succeeded": None,
+            "fallback_used": False,
+            "effective_backend": self.backend_name,
+            "warnings": [],
         }
 
     @abstractmethod
@@ -91,7 +105,56 @@ class OllamaPlanner(Planner):
         self.model_name = model
         self.fallback = fallback or HeuristicPlanner()
         self.timeout_s = timeout_s
-        self.last_warning: str | None = None
+        self._request_local = threading.local()
+
+    def begin_request(self) -> None:
+        self._request_local.state = {
+            "attempts": 0,
+            "successes": 0,
+            "warnings": [],
+        }
+
+    def _runtime_state(self) -> dict[str, Any]:
+        state = getattr(self._request_local, "state", None)
+        if state is None:
+            self.begin_request()
+            state = self._request_local.state
+        return state
+
+    def _record_attempt(self) -> None:
+        self._runtime_state()["attempts"] += 1
+
+    def _record_success(self) -> None:
+        self._runtime_state()["successes"] += 1
+
+    def _record_failure(self, warning: str) -> None:
+        self._runtime_state()["warnings"].append(warning)
+
+    def runtime_metadata(self) -> dict[str, Any]:
+        state = self._runtime_state()
+        attempts = int(state["attempts"])
+        successes = int(state["successes"])
+        warnings = list(state["warnings"])
+        if attempts == 0:
+            effective_backend = "not_invoked"
+            llm_succeeded = None
+        elif successes == attempts:
+            effective_backend = "ollama"
+            llm_succeeded = True
+        elif successes == 0:
+            effective_backend = "heuristic_fallback"
+            llm_succeeded = False
+        else:
+            effective_backend = "ollama_with_fallback"
+            llm_succeeded = False
+        return {
+            "llm_attempts": attempts,
+            "llm_successes": successes,
+            "llm_succeeded": llm_succeeded,
+            "fallback_used": bool(warnings),
+            "effective_backend": effective_backend,
+            "warnings": warnings,
+        }
 
     def health(self) -> dict[str, Any]:
         request = Request(f"{self.base_url}/api/tags", method="GET")
@@ -153,15 +216,16 @@ class OllamaPlanner(Planner):
             f"tools_called={json.dumps(tools_called)}\n"
             f"observations={json.dumps(observations, ensure_ascii=False)}"
         )
+        self._record_attempt()
         try:
             result = self._generate_json(prompt)
             action = str(result.get("action", "")).strip()
             if action not in ALLOWED_ACTIONS:
                 raise ValueError(f"LLM selected disallowed action: {action!r}")
-            self.last_warning = None
+            self._record_success()
             return action
         except (URLError, TimeoutError, KeyError, ValueError, json.JSONDecodeError) as exc:
-            self.last_warning = f"Ollama planner fallback: {exc}"
+            self._record_failure(f"Ollama planner fallback: {exc}")
             return self.fallback.next_action(window_id, observations, tools_called)
 
     def finalize(
@@ -176,6 +240,7 @@ class OllamaPlanner(Planner):
             f"window_id={window_id}\n"
             f"observations={json.dumps(observations, ensure_ascii=False)}"
         )
+        self._record_attempt()
         try:
             result = self._generate_json(prompt)
             decision = str(result.get("decision", "")).strip()
@@ -186,10 +251,10 @@ class OllamaPlanner(Planner):
                 isinstance(item, str) for item in evidence
             ):
                 raise ValueError("LLM evidence must be a list of strings")
-            self.last_warning = None
+            self._record_success()
             return {"decision": decision, "evidence": evidence}
         except (URLError, TimeoutError, KeyError, ValueError, json.JSONDecodeError) as exc:
-            self.last_warning = f"Ollama finalizer fallback: {exc}"
+            self._record_failure(f"Ollama finalizer fallback: {exc}")
             return self.fallback.finalize(window_id, observations)
 
 

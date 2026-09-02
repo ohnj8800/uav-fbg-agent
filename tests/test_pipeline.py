@@ -195,6 +195,9 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(result["tools_called"], ["check_quality"])
         self.assertFalse(result["planner_invoked"])
         self.assertFalse(result["llm_invoked"])
+        self.assertEqual(result["llm_attempts"], 0)
+        self.assertEqual(result["effective_backend"], "not_invoked")
+        self.assertFalse(result["fallback_used"])
         self.assertEqual(result["planner_trace"][0]["reason"], "mandatory-preflight")
         self.assertEqual(result["evidence_data"]["fbg"]["validity_ratio"], 0.30)
         self.assertIsNone(result["evidence_data"]["real_flight_context"])
@@ -247,6 +250,7 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("get_evidence", result["tools_called"])
         self.assertTrue(result["planner_invoked"])
         self.assertFalse(result["llm_invoked"])
+        self.assertEqual(result["effective_backend"], "heuristic")
 
     def test_window_listing_uses_normalized_ids(self) -> None:
         self.assertEqual(

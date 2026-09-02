@@ -81,6 +81,8 @@ class HttpIntegrationTest(unittest.TestCase):
         self.assertEqual(result["tools_called"], ["check_quality"])
         self.assertFalse(result["planner_invoked"])
         self.assertFalse(result["llm_invoked"])
+        self.assertEqual(result["llm_attempts"], 0)
+        self.assertEqual(result["effective_backend"], "not_invoked")
         self.assertAlmostEqual(
             result["evidence_data"]["fbg"]["validity_ratio"], 0.30
         )
@@ -97,6 +99,7 @@ class HttpIntegrationTest(unittest.TestCase):
         )
         self.assertTrue(result["planner_invoked"])
         self.assertFalse(result["llm_invoked"])
+        self.assertEqual(result["effective_backend"], "heuristic")
         self.assertEqual(
             result["evidence_data"]["real_flight_context"]["flight_phase"],
             "armed_ground",

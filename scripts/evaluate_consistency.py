@@ -52,6 +52,15 @@ def validate_result(result: dict[str, Any]) -> list[str]:
     if planner_backend == "ollama" and not result.get("planner_model"):
         violations.append("Ollama interpretation must record planner_model")
 
+    attempts = result.get("llm_attempts")
+    successes = result.get("llm_successes")
+    if not isinstance(attempts, int) or not isinstance(successes, int):
+        violations.append("LLM attempt and success counts must be integers")
+    elif successes < 0 or attempts < successes:
+        violations.append("LLM attempt and success counts are inconsistent")
+    if result.get("fallback_used") and not result.get("planner_warnings"):
+        violations.append("fallback use must include planner_warnings")
+
     evidence = result.get("evidence")
     if not isinstance(evidence, list) or not all(
         isinstance(item, str) for item in evidence
@@ -75,6 +84,8 @@ def validate_result(result: dict[str, Any]) -> list[str]:
             violations.append("guardrail decision must be INSUFFICIENT_DATA")
         if result.get("llm_invoked"):
             violations.append("LLM must not run after the quality guardrail blocks a window")
+        if attempts != 0:
+            violations.append("a blocked window must have zero LLM attempts")
         if result.get("tools_called") != ["check_quality"]:
             violations.append("a blocked window may only call check_quality")
     elif not isinstance(structured.get("real_flight_context"), dict):
@@ -114,6 +125,10 @@ def summarize_window(
         "planner_models": sorted(
             {str(result.get("planner_model")) for result in results}
         ),
+        "effective_backends": sorted(
+            {str(result.get("effective_backend")) for result in results}
+        ),
+        "fallback_runs": sum(bool(result.get("fallback_used")) for result in results),
     }
 
 
@@ -188,6 +203,8 @@ def run_evaluation(
             "tool_sequences",
             "planner_backends",
             "planner_models",
+            "effective_backends",
+            "fallback_runs",
         )
         writer = csv.DictWriter(csv_handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -201,6 +218,7 @@ def run_evaluation(
                     "tool_sequences": json.dumps(item["tool_sequences"]),
                     "planner_backends": json.dumps(item["planner_backends"]),
                     "planner_models": json.dumps(item["planner_models"]),
+                    "effective_backends": json.dumps(item["effective_backends"]),
                 }
             )
 

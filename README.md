@@ -149,6 +149,10 @@ The planner uses temperature 0, an action whitelist and JSON-only outputs. If Ol
 or returns invalid JSON, the service records a warning and falls back to the deterministic planner.
 The deterministic FBG quality guardrail remains authoritative in every mode.
 
+Each interpretation separately records `llm_attempts`, `llm_successes`, `llm_succeeded`,
+`fallback_used`, `effective_backend` and all `planner_warnings`. Therefore an Ollama-configured
+request that actually used deterministic fallback cannot be mistaken for a successful LLM result.
+
 Check both data-service and configured planner/model readiness:
 
 ```powershell

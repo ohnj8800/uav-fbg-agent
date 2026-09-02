@@ -30,6 +30,11 @@ CSV_FIELDS = (
     "llm_invoked",
     "planner_backend",
     "planner_model",
+    "effective_backend",
+    "llm_attempts",
+    "llm_successes",
+    "llm_succeeded",
+    "fallback_used",
     "tools_called",
     "evidence",
     "request_id",
@@ -87,6 +92,11 @@ def csv_row(result: dict[str, Any]) -> dict[str, object]:
         "llm_invoked": result.get("llm_invoked"),
         "planner_backend": result.get("planner_backend"),
         "planner_model": result.get("planner_model"),
+        "effective_backend": result.get("effective_backend"),
+        "llm_attempts": result.get("llm_attempts"),
+        "llm_successes": result.get("llm_successes"),
+        "llm_succeeded": result.get("llm_succeeded"),
+        "fallback_used": result.get("fallback_used"),
         "tools_called": " | ".join(result.get("tools_called", [])),
         "evidence": " | ".join(result.get("evidence", [])),
         "request_id": result.get("request_id"),
@@ -152,6 +162,13 @@ def run_batch(
         ),
         "planner_models": dict(
             sorted(Counter(str(r.get("planner_model") or "none") for r in results).items())
+        ),
+        "effective_backends": dict(
+            sorted(Counter(str(r.get("effective_backend", "unknown")) for r in results).items())
+        ),
+        "fallback_results": sum(bool(r.get("fallback_used")) for r in results),
+        "fully_successful_llm_results": sum(
+            r.get("llm_succeeded") is True for r in results
         ),
         "llm_invocations": sum(bool(r.get("llm_invoked")) for r in results),
         "guardrail_blocks": sum(bool(r.get("guardrail_applied")) for r in results),

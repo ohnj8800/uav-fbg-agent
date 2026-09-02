@@ -85,6 +85,7 @@ class AgentOrchestrator:
         }
 
     def analyze(self, window_id: str) -> dict[str, Any]:
+        self.planner.begin_request()
         request_id = str(uuid.uuid4())
         quality = self.client.call_tool("check_quality", window_id)
         observations: dict[str, Any] = {"check_quality": quality}
@@ -186,6 +187,9 @@ class AgentOrchestrator:
                 raise RuntimeError(f"Invalid final decision: {decision!r}")
 
         timestamp = datetime.now(timezone.utc).isoformat()
+        runtime = self.planner.runtime_metadata()
+        if not planner_invoked:
+            runtime["effective_backend"] = "not_invoked"
         result = {
             "request_id": request_id,
             "timestamp_utc": timestamp,
@@ -198,11 +202,14 @@ class AgentOrchestrator:
             "planner_backend": self.planner.backend_name,
             "planner_model": self.planner.model_name,
             "planner_invoked": planner_invoked,
-            "llm_invoked": planner_invoked and self.planner.backend_name == "ollama",
+            "llm_invoked": runtime["llm_attempts"] > 0,
+            "llm_attempts": runtime["llm_attempts"],
+            "llm_successes": runtime["llm_successes"],
+            "llm_succeeded": runtime["llm_succeeded"],
+            "fallback_used": runtime["fallback_used"],
+            "effective_backend": runtime["effective_backend"],
+            "planner_warnings": runtime["warnings"],
             "planner_trace": planner_trace,
         }
-        warning = getattr(self.planner, "last_warning", None)
-        if warning:
-            result["warning"] = warning
         self.audit_log.append({**result, "observations": observations})
         return result
