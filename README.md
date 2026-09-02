@@ -197,7 +197,20 @@ Each run creates three ignored local files under `results/`:
 Windows rejected by the quality preflight do not invoke Ollama. For a fast deterministic baseline,
 set `LLM_MODE=heuristic` in `.env` and recreate `agent-service` before running the batch.
 
-## 8. Git workflow
+## 8. Interpretation consistency evaluation
+
+Repeat representative interpretations and verify the fixed four-class contract, structured
+evidence and deterministic quality guardrail:
+
+```powershell
+python scripts\evaluate_consistency.py --windows W003 W004 W027 --repeats 3
+```
+
+The evaluator reports per-window decision agreement, tool sequences and any contract violation.
+This measures interpretation stability and rule compliance; it is not anomaly-detection accuracy.
+Its CSV, JSONL and summary JSON outputs are written under the ignored `results/` directory.
+
+## 9. Git workflow
 
 ```bash
 git status

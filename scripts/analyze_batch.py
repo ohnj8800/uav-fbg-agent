@@ -20,8 +20,11 @@ CSV_FIELDS = (
     "fbg_rms_nm",
     "fbg_p2p_nm",
     "flight_phase",
+    "armed_fraction",
+    "airborne_fraction",
     "roll_mean_deg",
     "pitch_mean_deg",
+    "flight_events",
     "guardrail_applied",
     "planner_invoked",
     "llm_invoked",
@@ -57,6 +60,14 @@ def csv_row(result: dict[str, Any]) -> dict[str, object]:
     structured = result.get("evidence_data", {})
     fbg = structured.get("fbg") or {}
     flight = structured.get("real_flight_context") or {}
+    flight_events = []
+    for event in flight.get("events_in_window", []):
+        event_name = event.get("event", "unknown")
+        event_time = event.get("t_s")
+        if isinstance(event_time, (int, float)):
+            flight_events.append(f"{event_name}@{event_time:.3f}s")
+        else:
+            flight_events.append(str(event_name))
     return {
         "window_id": result.get("window_id"),
         "decision": result.get("decision"),
@@ -65,8 +76,11 @@ def csv_row(result: dict[str, Any]) -> dict[str, object]:
         "fbg_rms_nm": fbg.get("rms_nm"),
         "fbg_p2p_nm": fbg.get("p2p_nm"),
         "flight_phase": flight.get("flight_phase"),
+        "armed_fraction": flight.get("armed_fraction"),
+        "airborne_fraction": flight.get("airborne_fraction"),
         "roll_mean_deg": flight.get("roll_mean_deg"),
         "pitch_mean_deg": flight.get("pitch_mean_deg"),
+        "flight_events": " | ".join(flight_events),
         "guardrail_applied": result.get("guardrail_applied"),
         "planner_invoked": result.get("planner_invoked"),
         "llm_invoked": result.get("llm_invoked"),
