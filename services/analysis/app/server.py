@@ -38,6 +38,10 @@ class AnalysisRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            if parts == ["v1", "windows"]:
+                self._json(200, self.engine.list_windows())
+                return
+
             if len(parts) == 4 and parts[:2] == ["v1", "windows"]:
                 window_id, action = parts[2], parts[3]
                 if action == "quality":
@@ -85,4 +89,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

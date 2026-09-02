@@ -32,6 +32,9 @@ class AnalysisClient:
     def health(self) -> dict[str, Any]:
         return self._get("/health")
 
+    def list_windows(self) -> dict[str, Any]:
+        return self._get("/v1/windows")
+
     def call_tool(self, tool: str, window_id: str) -> dict[str, Any]:
         encoded = quote(window_id, safe="")
         routes = {
@@ -45,4 +48,3 @@ class AnalysisClient:
         except KeyError as exc:
             raise ValueError(f"Unsupported analysis tool: {tool}") from exc
         return self._get(route)
-

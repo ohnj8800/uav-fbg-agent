@@ -9,8 +9,8 @@ Agent 只能透過白名單工具取得 evidence，並輸出固定四類判讀�
   FBG quality guardrail and deterministic evidence.
 - `agent-service`: restricted tool planning, optional local Ollama backend, structured output,
   decision validation and JSONL audit trail.
-- Mandatory rule: when `fbg_validity_ratio < FBG_VALIDITY_THRESHOLD`, the final decision is
-  always `INSUFFICIENT_DATA`. The LLM cannot override it.
+- Mandatory preflight rule: when `fbg_validity_ratio < FBG_VALIDITY_THRESHOLD`, the request is
+  stopped before the planner/LLM is called and the decision is always `INSUFFICIENT_DATA`.
 
 Allowed decisions:
 
@@ -29,7 +29,8 @@ services/analysis/    deterministic data and rule service
 services/agent/       restricted agent and Ollama adapter
 data/                 local CSV files; ignored by Git
 runtime/              audit logs; ignored by Git
-scripts/              command-line client
+scripts/              single-window and batch command-line clients
+results/              local batch outputs; ignored by Git
 tests/                unit and real-data smoke tests
 docker-compose.yml    two-container deployment
 ```
@@ -157,10 +158,41 @@ Content-Type: application/json
 ```
 
 The response includes `decision`, `evidence`, `tools_called`, `planner_trace`,
-`guardrail_applied` and `request_id`. Full observations are written to
+`guardrail_applied`, `planner_invoked`, `llm_invoked` and `request_id`. Full observations are written to
 `runtime/audit.jsonl` for traceability.
 
-## 7. Git workflow
+List the windows available through the restricted service boundary:
+
+```http
+GET /v1/windows
+```
+
+The endpoint returns IDs only. It does not expose the CSV path or raw rows to the Agent container.
+
+## 7. Batch analysis
+
+Start with a short Ollama run to confirm latency and outputs:
+
+```powershell
+python scripts\analyze_batch.py --limit 5
+```
+
+Analyze every available window:
+
+```powershell
+python scripts\analyze_batch.py
+```
+
+Each run creates three ignored local files under `results/`:
+
+- `batch_<time>.jsonl`: complete traceable result for each window.
+- `batch_<time>.csv`: compact table suitable for Excel and plots.
+- `batch_<time>_summary.json`: counts, failures, elapsed time and output paths.
+
+Windows rejected by the quality preflight do not invoke Ollama. For a fast deterministic baseline,
+set `LLM_MODE=heuristic` in `.env` and recreate `agent-service` before running the batch.
+
+## 8. Git workflow
 
 ```bash
 git status

@@ -11,3 +11,6 @@ data/*.csv
 .idea/
 .vscode/
 
+
+results/
+*.patch

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from services.agent.app.orchestrator import AgentOrchestrator, AuditLog
-from services.agent.app.planner import HeuristicPlanner
+from services.agent.app.planner import HeuristicPlanner, Planner
 from services.analysis.app.engine import AnalysisEngine
 from services.analysis.app.repository import CsvRepository
 
@@ -50,6 +50,20 @@ class InProcessClient:
             "get_evidence": self.engine.evidence,
         }
         return functions[tool](window_id)
+
+
+class FailIfInvokedPlanner(Planner):
+    backend_name = "ollama"
+
+    def next_action(
+        self, window_id: str, observations: dict[str, Any], tools_called: list[str]
+    ) -> str:
+        raise AssertionError("planner must not run when quality is insufficient")
+
+    def finalize(
+        self, window_id: str, observations: dict[str, Any]
+    ) -> dict[str, Any]:
+        raise AssertionError("finalizer must not run when quality is insufficient")
 
 
 class PipelineTest(unittest.TestCase):
@@ -172,7 +186,21 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(result["decision"], "INSUFFICIENT_DATA")
         self.assertTrue(result["guardrail_applied"])
         self.assertEqual(result["tools_called"], ["check_quality"])
+        self.assertFalse(result["planner_invoked"])
+        self.assertFalse(result["llm_invoked"])
+        self.assertEqual(result["planner_trace"][0]["reason"], "mandatory-preflight")
         self.assertTrue(self.audit_path.exists())
+
+    def test_invalid_fbg_never_invokes_llm_planner(self) -> None:
+        orchestrator = AgentOrchestrator(
+            client=InProcessClient(self.engine),
+            planner=FailIfInvokedPlanner(),
+            audit_log=AuditLog(self.audit_path),
+        )
+        result = orchestrator.analyze("W003")
+        self.assertEqual(result["decision"], "INSUFFICIENT_DATA")
+        self.assertFalse(result["planner_invoked"])
+        self.assertFalse(result["llm_invoked"])
 
     def test_agent_calls_multiple_tools_for_valid_window(self) -> None:
         orchestrator = AgentOrchestrator(
@@ -185,6 +213,14 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("get_context", result["tools_called"])
         self.assertIn("compare_neighbors", result["tools_called"])
         self.assertIn("get_evidence", result["tools_called"])
+        self.assertTrue(result["planner_invoked"])
+        self.assertFalse(result["llm_invoked"])
+
+    def test_window_listing_uses_normalized_ids(self) -> None:
+        self.assertEqual(
+            self.engine.list_windows(),
+            {"count": 3, "window_ids": ["W001", "W002", "W003"]},
+        )
 
 
 if __name__ == "__main__":

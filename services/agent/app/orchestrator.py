@@ -41,61 +41,54 @@ class AgentOrchestrator:
 
     def analyze(self, window_id: str) -> dict[str, Any]:
         request_id = str(uuid.uuid4())
-        observations: dict[str, Any] = {}
-        tools_called: list[str] = []
-        planner_trace: list[dict[str, str]] = []
+        quality = self.client.call_tool("check_quality", window_id)
+        observations: dict[str, Any] = {"check_quality": quality}
+        tools_called = ["check_quality"]
+        planner_trace: list[dict[str, str]] = [
+            {
+                "requested": "check_quality",
+                "executed": "check_quality",
+                "reason": "mandatory-preflight",
+            }
+        ]
+        planner_invoked = False
 
-        for _ in range(self.max_steps):
-            action = self.planner.next_action(window_id, observations, tools_called)
-
-            # Mandatory guardrail: an LLM cannot skip the quality check.
-            if "check_quality" not in observations and action != "check_quality":
-                planner_trace.append(
-                    {"requested": action, "executed": "check_quality", "reason": "guardrail"}
-                )
-                action = "check_quality"
-            else:
+        if quality.get("sufficient", False):
+            for _ in range(self.max_steps):
+                planner_invoked = True
+                action = self.planner.next_action(window_id, observations, tools_called)
                 planner_trace.append(
                     {"requested": action, "executed": action, "reason": "planner"}
                 )
 
-            if action == "finalize":
-                break
-            if action not in {
-                "check_quality",
-                "get_context",
-                "compare_neighbors",
-                "get_evidence",
-            }:
-                raise RuntimeError(f"Planner produced unsupported action: {action}")
-
-            # Avoid repeated calls when a model loops.
-            if action in observations:
-                for fallback_action in (
+                if action == "finalize":
+                    break
+                if action not in {
+                    "check_quality",
                     "get_context",
                     "compare_neighbors",
                     "get_evidence",
-                ):
-                    if fallback_action not in observations:
-                        action = fallback_action
-                        planner_trace[-1]["executed"] = action
-                        planner_trace[-1]["reason"] = "loop-prevention"
+                }:
+                    raise RuntimeError(f"Planner produced unsupported action: {action}")
+
+                # Avoid repeated calls when a model loops.
+                if action in observations:
+                    for fallback_action in (
+                        "get_context",
+                        "compare_neighbors",
+                        "get_evidence",
+                    ):
+                        if fallback_action not in observations:
+                            action = fallback_action
+                            planner_trace[-1]["executed"] = action
+                            planner_trace[-1]["reason"] = "loop-prevention"
+                            break
+                    else:
                         break
-                else:
-                    break
 
-            observations[action] = self.client.call_tool(action, window_id)
-            tools_called.append(action)
+                observations[action] = self.client.call_tool(action, window_id)
+                tools_called.append(action)
 
-            quality = observations.get("check_quality", {})
-            if quality and not quality.get("sufficient", False):
-                break
-
-        quality = observations.get("check_quality")
-        if quality is None:
-            quality = self.client.call_tool("check_quality", window_id)
-            observations["check_quality"] = quality
-            tools_called.append("check_quality")
         canonical_window_id = str(quality.get("window_id", window_id))
 
         guardrail_applied = not quality.get("sufficient", False)
@@ -130,6 +123,8 @@ class AgentOrchestrator:
             "tools_called": tools_called,
             "guardrail_applied": guardrail_applied,
             "planner_backend": self.planner.backend_name,
+            "planner_invoked": planner_invoked,
+            "llm_invoked": planner_invoked and self.planner.backend_name == "ollama",
             "planner_trace": planner_trace,
         }
         warning = getattr(self.planner, "last_warning", None)

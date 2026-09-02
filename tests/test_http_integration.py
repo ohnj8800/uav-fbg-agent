@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+from scripts.analyze_batch import run_batch
 from services.agent.app.config import Settings as AgentSettings
 from services.agent.app.server import create_server as create_agent_server
 from services.analysis.app.config import Settings as AnalysisSettings
@@ -78,6 +79,8 @@ class HttpIntegrationTest(unittest.TestCase):
         self.assertEqual(result["decision"], "INSUFFICIENT_DATA")
         self.assertTrue(result["guardrail_applied"])
         self.assertEqual(result["tools_called"], ["check_quality"])
+        self.assertFalse(result["planner_invoked"])
+        self.assertFalse(result["llm_invoked"])
 
     def test_w008_end_to_end_transition(self) -> None:
         result = self.analyze("W008")
@@ -87,8 +90,30 @@ class HttpIntegrationTest(unittest.TestCase):
             result["tools_called"],
             ["check_quality", "get_context", "compare_neighbors", "get_evidence"],
         )
+        self.assertTrue(result["planner_invoked"])
+        self.assertFalse(result["llm_invoked"])
+
+    def test_agent_lists_windows_without_exposing_csv(self) -> None:
+        with urlopen(
+            f"http://127.0.0.1:{self.agent_port}/v1/windows", timeout=5
+        ) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(result["count"], len(result["window_ids"]))
+        self.assertIn("W008", result["window_ids"])
+        self.assertIn("W027", result["window_ids"])
+
+    def test_batch_client_writes_csv_jsonl_and_summary(self) -> None:
+        output_dir = Path(self.temp_dir.name) / "batch-test"
+        summary = run_batch(
+            f"http://127.0.0.1:{self.agent_port}", output_dir, limit=2, timeout_s=5
+        )
+        self.assertEqual(summary["requested"], 2)
+        self.assertEqual(summary["completed"], 2)
+        self.assertEqual(summary["failed"], 0)
+        self.assertEqual(sum(summary["decision_counts"].values()), 2)
+        for output_path in summary["outputs"].values():
+            self.assertTrue(Path(output_path).exists())
 
 
 if __name__ == "__main__":
     unittest.main()
-

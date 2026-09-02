@@ -39,6 +39,12 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             except AnalysisServiceError as exc:
                 self._json(503, {"status": "degraded", "error": str(exc)})
             return
+        if self.path == "/v1/windows":
+            try:
+                self._json(200, self.analysis_client.list_windows())
+            except AnalysisServiceError as exc:
+                self._json(502, {"error": str(exc)})
+            return
         self._json(404, {"error": "Route not found"})
 
     def do_POST(self) -> None:  # noqa: N802
@@ -93,4 +99,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

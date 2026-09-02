@@ -82,6 +82,9 @@ class CsvRepository:
         except KeyError as exc:
             raise KeyError(f"Unknown window_id: {normalized}") from exc
 
+    def list_window_ids(self) -> list[str]:
+        return [normalize_window_id(row["window_id"]) for row in self.windows]
+
     def get_neighbors(
         self, window_id: str | int, radius: int = 1
     ) -> list[dict[str, str]]:
@@ -121,4 +124,3 @@ class CsvRepository:
 
 
 number = _number
-

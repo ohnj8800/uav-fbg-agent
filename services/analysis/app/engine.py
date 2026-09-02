@@ -20,6 +20,10 @@ class AnalysisEngine:
         self.repository = repository
         self.validity_threshold = validity_threshold
 
+    def list_windows(self) -> dict[str, Any]:
+        window_ids = self.repository.list_window_ids()
+        return {"count": len(window_ids), "window_ids": window_ids}
+
     def quality(self, window_id: str | int) -> dict[str, Any]:
         row = self.repository.get_window(window_id)
         ratio = number(row.get("fbg_validity_ratio")) or 0.0
@@ -161,4 +165,3 @@ class AnalysisEngine:
             "STATE_CONSISTENT",
             ["No flight transition or unexplained large FBG deviation was established"],
         )
-
