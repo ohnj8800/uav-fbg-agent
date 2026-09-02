@@ -46,6 +46,12 @@ def validate_result(result: dict[str, Any]) -> list[str]:
     if decision not in ALLOWED_DECISIONS:
         violations.append(f"decision is not allowed: {decision!r}")
 
+    planner_backend = result.get("planner_backend")
+    if planner_backend not in {"heuristic", "ollama"}:
+        violations.append(f"planner_backend is not recognized: {planner_backend!r}")
+    if planner_backend == "ollama" and not result.get("planner_model"):
+        violations.append("Ollama interpretation must record planner_model")
+
     evidence = result.get("evidence")
     if not isinstance(evidence, list) or not all(
         isinstance(item, str) for item in evidence
@@ -102,6 +108,12 @@ def summarize_window(
         "violations": violations,
         "errors": errors,
         "tool_sequences": [result.get("tools_called", []) for result in results],
+        "planner_backends": sorted(
+            {str(result.get("planner_backend")) for result in results}
+        ),
+        "planner_models": sorted(
+            {str(result.get("planner_model")) for result in results}
+        ),
     }
 
 
@@ -174,6 +186,8 @@ def run_evaluation(
             "violations",
             "errors",
             "tool_sequences",
+            "planner_backends",
+            "planner_models",
         )
         writer = csv.DictWriter(csv_handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -185,6 +199,8 @@ def run_evaluation(
                     "violations": " | ".join(item["violations"]),
                     "errors": " | ".join(item["errors"]),
                     "tool_sequences": json.dumps(item["tool_sequences"]),
+                    "planner_backends": json.dumps(item["planner_backends"]),
+                    "planner_models": json.dumps(item["planner_models"]),
                 }
             )
 

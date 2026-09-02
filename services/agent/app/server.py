@@ -28,12 +28,14 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         if self.path == "/health":
             try:
                 dependency = self.analysis_client.health()
+                planner = self.orchestrator.planner.health()
                 self._json(
                     200,
                     {
-                        "status": "ok",
+                        "status": "ok" if planner.get("ready") else "degraded",
                         "service": "agent-service",
                         "analysis_service": dependency.get("status"),
+                        "planner": planner,
                     },
                 )
             except AnalysisServiceError as exc:

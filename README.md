@@ -149,6 +149,16 @@ The planner uses temperature 0, an action whitelist and JSON-only outputs. If Ol
 or returns invalid JSON, the service records a warning and falls back to the deterministic planner.
 The deterministic FBG quality guardrail remains authoritative in every mode.
 
+Check both data-service and configured planner/model readiness:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health | ConvertTo-Json -Depth 5
+```
+
+For Ollama, the health response records the configured model name, endpoint reachability and
+whether that exact model is installed. A reachable service with a missing model is reported as
+`degraded`; deterministic fallback remains available for interpretation requests.
+
 ## 6. HTTP API
 
 Analyze a window:
@@ -162,7 +172,8 @@ Content-Type: application/json
 
 The response includes `decision`, human-readable `evidence`, deterministic `evidence_data`,
 `tools_called`, `planner_trace`, `guardrail_applied`, `planner_invoked`, `llm_invoked` and
-`request_id`. `evidence_data` directly exposes the FBG validity/STD/RMS/P2P and real flight
+`request_id`. `planner_backend` and `planner_model` identify the configured interpretation
+backend. `evidence_data` directly exposes the FBG validity/STD/RMS/P2P and real flight
 phase/roll/pitch used for interpretation. Full observations are written to `runtime/audit.jsonl`
 for traceability.
 

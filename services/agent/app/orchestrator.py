@@ -196,6 +196,7 @@ class AgentOrchestrator:
             "tools_called": tools_called,
             "guardrail_applied": guardrail_applied,
             "planner_backend": self.planner.backend_name,
+            "planner_model": self.planner.model_name,
             "planner_invoked": planner_invoked,
             "llm_invoked": planner_invoked and self.planner.backend_name == "ollama",
             "planner_trace": planner_trace,

@@ -85,6 +85,7 @@ class HttpIntegrationTest(unittest.TestCase):
             result["evidence_data"]["fbg"]["validity_ratio"], 0.30
         )
         self.assertIsNone(result["evidence_data"]["real_flight_context"])
+        self.assertIsNone(result["planner_model"])
 
     def test_w008_end_to_end_transition(self) -> None:
         result = self.analyze("W008")
@@ -101,6 +102,18 @@ class HttpIntegrationTest(unittest.TestCase):
             "armed_ground",
         )
         self.assertIsNotNone(result["evidence_data"]["fbg"]["rms_nm"])
+        self.assertIsNone(result["planner_model"])
+
+    def test_health_reports_planner_readiness(self) -> None:
+        with urlopen(
+            f"http://127.0.0.1:{self.agent_port}/health", timeout=5
+        ) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["analysis_service"], "ok")
+        self.assertEqual(result["planner"]["backend"], "heuristic")
+        self.assertTrue(result["planner"]["ready"])
+        self.assertIsNone(result["planner"]["model"])
 
     def test_agent_lists_windows_without_exposing_csv(self) -> None:
         with urlopen(

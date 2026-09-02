@@ -24,6 +24,15 @@ ALLOWED_DECISIONS = {
 
 class Planner(ABC):
     backend_name = "unknown"
+    model_name: str | None = None
+
+    def health(self) -> dict[str, Any]:
+        return {
+            "backend": self.backend_name,
+            "model": self.model_name,
+            "reachable": True,
+            "ready": True,
+        }
 
     @abstractmethod
     def next_action(
@@ -79,9 +88,38 @@ class OllamaPlanner(Planner):
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.model_name = model
         self.fallback = fallback or HeuristicPlanner()
         self.timeout_s = timeout_s
         self.last_warning: str | None = None
+
+    def health(self) -> dict[str, Any]:
+        request = Request(f"{self.base_url}/api/tags", method="GET")
+        try:
+            with urlopen(request, timeout=min(self.timeout_s, 5.0)) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            installed_models = {
+                str(item.get("name") or item.get("model"))
+                for item in payload.get("models", [])
+                if isinstance(item, dict)
+            }
+            model_available = self.model in installed_models
+            return {
+                "backend": self.backend_name,
+                "model": self.model,
+                "reachable": True,
+                "ready": model_available,
+                "model_available": model_available,
+            }
+        except (URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+            return {
+                "backend": self.backend_name,
+                "model": self.model,
+                "reachable": False,
+                "ready": False,
+                "model_available": False,
+                "error": str(exc),
+            }
 
     def _generate_json(self, prompt: str) -> dict[str, Any]:
         payload = json.dumps(
@@ -161,4 +199,3 @@ def build_planner(mode: str, ollama_base_url: str, ollama_model: str) -> Planner
     if mode == "ollama":
         return OllamaPlanner(ollama_base_url, ollama_model)
     raise ValueError("LLM_MODE must be either 'heuristic' or 'ollama'")
-

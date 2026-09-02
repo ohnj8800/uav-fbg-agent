@@ -21,6 +21,8 @@ def valid_result(decision: str = "STATE_CONSISTENT") -> dict[str, object]:
         },
         "guardrail_applied": False,
         "llm_invoked": True,
+        "planner_backend": "ollama",
+        "planner_model": "qwen3:8b",
         "tools_called": ["check_quality", "get_evidence"],
     }
 

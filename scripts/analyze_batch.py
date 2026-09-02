@@ -29,6 +29,7 @@ CSV_FIELDS = (
     "planner_invoked",
     "llm_invoked",
     "planner_backend",
+    "planner_model",
     "tools_called",
     "evidence",
     "request_id",
@@ -85,6 +86,7 @@ def csv_row(result: dict[str, Any]) -> dict[str, object]:
         "planner_invoked": result.get("planner_invoked"),
         "llm_invoked": result.get("llm_invoked"),
         "planner_backend": result.get("planner_backend"),
+        "planner_model": result.get("planner_model"),
         "tools_called": " | ".join(result.get("tools_called", [])),
         "evidence": " | ".join(result.get("evidence", [])),
         "request_id": result.get("request_id"),
@@ -147,6 +149,9 @@ def run_batch(
         "decision_counts": dict(sorted(decisions.items())),
         "planner_backends": dict(
             sorted(Counter(str(r.get("planner_backend", "unknown")) for r in results).items())
+        ),
+        "planner_models": dict(
+            sorted(Counter(str(r.get("planner_model") or "none") for r in results).items())
         ),
         "llm_invocations": sum(bool(r.get("llm_invoked")) for r in results),
         "guardrail_blocks": sum(bool(r.get("guardrail_applied")) for r in results),
