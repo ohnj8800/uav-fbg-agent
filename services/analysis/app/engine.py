@@ -35,6 +35,11 @@ class AnalysisEngine:
             "n_timestamp_rows": int(number(row.get("n_fbg_timestamp_rows")) or 0),
             "n_valid_samples": int(number(row.get("n_fbg_valid_samples")) or 0),
             "missing_fraction": number(row.get("fbg_missing_fraction")),
+            "fbg_metrics": {
+                "std_nm": number(row.get("fbg_delta_std_nm")),
+                "rms_nm": number(row.get("fbg_delta_rms_nm")),
+                "p2p_nm": number(row.get("fbg_delta_p2p_nm")),
+            },
         }
 
     def context(self, window_id: str | int) -> dict[str, Any]:

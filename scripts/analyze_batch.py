@@ -15,6 +15,13 @@ from urllib.request import Request, urlopen
 CSV_FIELDS = (
     "window_id",
     "decision",
+    "fbg_validity_ratio",
+    "fbg_std_nm",
+    "fbg_rms_nm",
+    "fbg_p2p_nm",
+    "flight_phase",
+    "roll_mean_deg",
+    "pitch_mean_deg",
     "guardrail_applied",
     "planner_invoked",
     "llm_invoked",
@@ -47,9 +54,19 @@ def request_json(
 
 
 def csv_row(result: dict[str, Any]) -> dict[str, object]:
+    structured = result.get("evidence_data", {})
+    fbg = structured.get("fbg") or {}
+    flight = structured.get("real_flight_context") or {}
     return {
         "window_id": result.get("window_id"),
         "decision": result.get("decision"),
+        "fbg_validity_ratio": fbg.get("validity_ratio"),
+        "fbg_std_nm": fbg.get("std_nm"),
+        "fbg_rms_nm": fbg.get("rms_nm"),
+        "fbg_p2p_nm": fbg.get("p2p_nm"),
+        "flight_phase": flight.get("flight_phase"),
+        "roll_mean_deg": flight.get("roll_mean_deg"),
+        "pitch_mean_deg": flight.get("pitch_mean_deg"),
         "guardrail_applied": result.get("guardrail_applied"),
         "planner_invoked": result.get("planner_invoked"),
         "llm_invoked": result.get("llm_invoked"),

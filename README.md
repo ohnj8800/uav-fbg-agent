@@ -3,6 +3,9 @@
 雙 Docker 的受限制 LLM Agent 飛行資料判讀系統。資料分析服務獨佔 CSV，
 Agent 只能透過白名單工具取得 evidence，並輸出固定四類判讀結果。
 
+This project interprets whether FBG changes are attributable to real DataFlash flight state.
+It does not classify UAV anomalies or diagnose faults.
+
 ## Current scope
 
 - `analysis-service`: CSV parsing, window lookup, flight events, neighbor comparison,
@@ -157,9 +160,11 @@ Content-Type: application/json
 {"window_id":"W008"}
 ```
 
-The response includes `decision`, `evidence`, `tools_called`, `planner_trace`,
-`guardrail_applied`, `planner_invoked`, `llm_invoked` and `request_id`. Full observations are written to
-`runtime/audit.jsonl` for traceability.
+The response includes `decision`, human-readable `evidence`, deterministic `evidence_data`,
+`tools_called`, `planner_trace`, `guardrail_applied`, `planner_invoked`, `llm_invoked` and
+`request_id`. `evidence_data` directly exposes the FBG validity/STD/RMS/P2P and real flight
+phase/roll/pitch used for interpretation. Full observations are written to `runtime/audit.jsonl`
+for traceability.
 
 List the windows available through the restricted service boundary:
 
@@ -209,10 +214,10 @@ Do not force-add the CSV files. Verify they remain ignored before pushing:
 git status --ignored
 ```
 
-## Known data limitations
+## Scope and data limitations
 
 - The supplied files cover one flight of about 178 seconds.
-- No explicit anomaly or fault ground-truth labels are present.
+- The four decisions describe FBG-to-flight-state attribution, not normal/anomaly or fault labels.
 - FBG validity is about 61%; W027 has a validity ratio of 0.30.
 - The synchronized FBG rate is about 9.9 Hz. High-frequency motor/propeller vibration analysis may
   require the original, non-downsampled FBG data.

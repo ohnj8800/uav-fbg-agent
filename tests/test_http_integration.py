@@ -81,6 +81,10 @@ class HttpIntegrationTest(unittest.TestCase):
         self.assertEqual(result["tools_called"], ["check_quality"])
         self.assertFalse(result["planner_invoked"])
         self.assertFalse(result["llm_invoked"])
+        self.assertAlmostEqual(
+            result["evidence_data"]["fbg"]["validity_ratio"], 0.30
+        )
+        self.assertIsNone(result["evidence_data"]["real_flight_context"])
 
     def test_w008_end_to_end_transition(self) -> None:
         result = self.analyze("W008")
@@ -92,6 +96,11 @@ class HttpIntegrationTest(unittest.TestCase):
         )
         self.assertTrue(result["planner_invoked"])
         self.assertFalse(result["llm_invoked"])
+        self.assertEqual(
+            result["evidence_data"]["real_flight_context"]["flight_phase"],
+            "armed_ground",
+        )
+        self.assertIsNotNone(result["evidence_data"]["fbg"]["rms_nm"])
 
     def test_agent_lists_windows_without_exposing_csv(self) -> None:
         with urlopen(

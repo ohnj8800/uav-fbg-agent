@@ -39,6 +39,51 @@ class AgentOrchestrator:
         self.audit_log = audit_log
         self.max_steps = max_steps
 
+    @staticmethod
+    def _structured_evidence(
+        quality: dict[str, Any], observations: dict[str, Any]
+    ) -> dict[str, Any]:
+        analysis_evidence = observations.get("get_evidence", {})
+        raw_metrics = analysis_evidence.get("fbg_metrics", {})
+        quality_metrics = quality.get("fbg_metrics", {})
+        context = analysis_evidence.get("flight_context") or observations.get(
+            "get_context"
+        )
+
+        real_flight_context = None
+        if context:
+            attitude = context.get("attitude", {})
+            real_flight_context = {
+                "t_start_s": context.get("t_start_s"),
+                "t_end_s": context.get("t_end_s"),
+                "flight_phase": context.get("flight_phase"),
+                "mode_name": context.get("mode_name"),
+                "armed_fraction": context.get("armed_fraction"),
+                "airborne_fraction": context.get("airborne_fraction"),
+                "roll_mean_deg": attitude.get("roll_mean_deg"),
+                "roll_std_deg": attitude.get("roll_std_deg"),
+                "pitch_mean_deg": attitude.get("pitch_mean_deg"),
+                "pitch_std_deg": attitude.get("pitch_std_deg"),
+                "events_in_window": context.get("events_in_window", []),
+            }
+
+        return {
+            "fbg": {
+                "validity_ratio": quality.get("fbg_validity_ratio"),
+                "validity_threshold": quality.get("threshold"),
+                "std_nm": raw_metrics.get(
+                    "fbg_delta_std_nm", quality_metrics.get("std_nm")
+                ),
+                "rms_nm": raw_metrics.get(
+                    "fbg_delta_rms_nm", quality_metrics.get("rms_nm")
+                ),
+                "p2p_nm": raw_metrics.get(
+                    "fbg_delta_p2p_nm", quality_metrics.get("p2p_nm")
+                ),
+            },
+            "real_flight_context": real_flight_context,
+        }
+
     def analyze(self, window_id: str) -> dict[str, Any]:
         request_id = str(uuid.uuid4())
         quality = self.client.call_tool("check_quality", window_id)
@@ -57,11 +102,20 @@ class AgentOrchestrator:
             for _ in range(self.max_steps):
                 planner_invoked = True
                 action = self.planner.next_action(window_id, observations, tools_called)
-                planner_trace.append(
-                    {"requested": action, "executed": action, "reason": "planner"}
-                )
 
                 if action == "finalize":
+                    if "get_evidence" not in observations:
+                        planner_trace.append(
+                            {
+                                "requested": "finalize",
+                                "executed": "get_evidence",
+                                "reason": "mandatory-evidence-before-finalize",
+                            }
+                        )
+                        observations["get_evidence"] = self.client.call_tool(
+                            "get_evidence", window_id
+                        )
+                        tools_called.append("get_evidence")
                     break
                 if action not in {
                     "check_quality",
@@ -70,6 +124,10 @@ class AgentOrchestrator:
                     "get_evidence",
                 }:
                     raise RuntimeError(f"Planner produced unsupported action: {action}")
+
+                planner_trace.append(
+                    {"requested": action, "executed": action, "reason": "planner"}
+                )
 
                 # Avoid repeated calls when a model loops.
                 if action in observations:
@@ -101,10 +159,24 @@ class AgentOrchestrator:
             ]
         else:
             if "get_evidence" not in observations:
+                planner_trace.append(
+                    {
+                        "requested": "finalize",
+                        "executed": "get_evidence",
+                        "reason": "mandatory-evidence-before-finalize",
+                    }
+                )
                 observations["get_evidence"] = self.client.call_tool(
                     "get_evidence", window_id
                 )
                 tools_called.append("get_evidence")
+            planner_trace.append(
+                {
+                    "requested": "finalize",
+                    "executed": "finalize",
+                    "reason": "evidence-complete",
+                }
+            )
             final = self.planner.finalize(window_id, observations)
             decision = final.get("decision")
             evidence = final.get("evidence") or observations["get_evidence"].get(
@@ -120,6 +192,7 @@ class AgentOrchestrator:
             "window_id": canonical_window_id,
             "decision": decision,
             "evidence": evidence,
+            "evidence_data": self._structured_evidence(quality, observations),
             "tools_called": tools_called,
             "guardrail_applied": guardrail_applied,
             "planner_backend": self.planner.backend_name,

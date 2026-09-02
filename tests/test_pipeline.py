@@ -66,6 +66,13 @@ class FailIfInvokedPlanner(Planner):
         raise AssertionError("finalizer must not run when quality is insufficient")
 
 
+class ImmediateFinalizePlanner(HeuristicPlanner):
+    def next_action(
+        self, window_id: str, observations: dict[str, Any], tools_called: list[str]
+    ) -> str:
+        return "finalize"
+
+
 class PipelineTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -189,6 +196,8 @@ class PipelineTest(unittest.TestCase):
         self.assertFalse(result["planner_invoked"])
         self.assertFalse(result["llm_invoked"])
         self.assertEqual(result["planner_trace"][0]["reason"], "mandatory-preflight")
+        self.assertEqual(result["evidence_data"]["fbg"]["validity_ratio"], 0.30)
+        self.assertIsNone(result["evidence_data"]["real_flight_context"])
         self.assertTrue(self.audit_path.exists())
 
     def test_invalid_fbg_never_invokes_llm_planner(self) -> None:
@@ -201,6 +210,29 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(result["decision"], "INSUFFICIENT_DATA")
         self.assertFalse(result["planner_invoked"])
         self.assertFalse(result["llm_invoked"])
+
+    def test_finalize_cannot_skip_structured_evidence(self) -> None:
+        orchestrator = AgentOrchestrator(
+            client=InProcessClient(self.engine),
+            planner=ImmediateFinalizePlanner(),
+            audit_log=AuditLog(self.audit_path),
+        )
+        result = orchestrator.analyze("W002")
+        self.assertEqual(result["tools_called"], ["check_quality", "get_evidence"])
+        self.assertEqual(
+            result["planner_trace"][1],
+            {
+                "requested": "finalize",
+                "executed": "get_evidence",
+                "reason": "mandatory-evidence-before-finalize",
+            },
+        )
+        self.assertEqual(result["planner_trace"][-1]["reason"], "evidence-complete")
+        self.assertEqual(
+            result["evidence_data"]["real_flight_context"]["flight_phase"],
+            "armed_ground",
+        )
+        self.assertEqual(result["evidence_data"]["fbg"]["rms_nm"], 0.06)
 
     def test_agent_calls_multiple_tools_for_valid_window(self) -> None:
         orchestrator = AgentOrchestrator(
@@ -220,6 +252,13 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(
             self.engine.list_windows(),
             {"count": 3, "window_ids": ["W001", "W002", "W003"]},
+        )
+
+    def test_quality_includes_fbg_summary_metrics(self) -> None:
+        quality = self.engine.quality("W002")
+        self.assertEqual(
+            quality["fbg_metrics"],
+            {"std_nm": 0.05, "rms_nm": 0.06, "p2p_nm": 0.30},
         )
 
 
