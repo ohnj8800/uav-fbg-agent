@@ -148,7 +148,23 @@ class HttpIntegrationTest(unittest.TestCase):
             publication_html = response.read().decode("utf-8")
         self.assertIn("Contextual interpretation examples", publication_html)
         self.assertIn("FBG evidence + verified flight-state context", publication_html)
+        self.assertIn("FINAL OUTPUT", publication_html)
+        self.assertIn("result.constrained_decision", publication_html)
         self.assertNotIn("Windows processed", publication_html)
+        with urlopen(
+            f"http://127.0.0.1:{self.agent_port}/paper-timeline", timeout=5
+        ) as response:
+            timeline_html = response.read().decode("utf-8")
+        self.assertIn("Context-aware interpretation across the flight", timeline_html)
+        self.assertIn("figure_c_flight_timeline", Path(__file__).parents[1].joinpath(
+            "scripts", "capture_paper_figures.ps1"
+        ).read_text(encoding="utf-8"))
+        with urlopen(
+            f"http://127.0.0.1:{self.agent_port}/v1/timeline", timeout=5
+        ) as response:
+            timeline = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(len(timeline["windows"]), 90)
+        self.assertTrue(any(event["event"] == "arm" for event in timeline["events"]))
 
     def test_batch_client_writes_csv_jsonl_and_summary(self) -> None:
         output_dir = Path(self.temp_dir.name) / "batch-test"

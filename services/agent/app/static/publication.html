@@ -22,21 +22,18 @@
     .case-head { text-align:center; margin-bottom:9px; }
     .case-head strong { display:block; font-size:19px; }
     .case-head span { display:block; margin-top:3px; color:var(--muted); font-size:12px; }
-    canvas { width:100%; height:270px; display:block; background:#fff; }
+    canvas { width:100%; height:250px; display:block; background:#fff; }
     .context { position:relative; margin:14px 12px 13px; min-height:58px; border:1.5px solid #83a996; border-radius:9px; background:var(--green-bg); padding:10px 12px; text-align:center; font-size:14px; line-height:1.35; }
     .context::after { content:"↓"; position:absolute; left:50%; bottom:-25px; transform:translateX(-50%); color:#66717d; font-size:19px; }
     .context .label { display:block; color:#52606d; font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; margin-bottom:3px; }
-    .decision { margin:24px 12px 0; min-height:69px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:4px; border:2px solid var(--gray); border-radius:10px; background:var(--gray-bg); text-align:center; padding:9px 12px; }
-    .decision .symbol { font-size:21px; line-height:1; }
-    .decision strong { font-size:15px; text-transform:lowercase; }
+    .decision { margin:24px 12px 0; min-height:73px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:4px; border:2px solid var(--gray); border-radius:10px; background:var(--gray-bg); text-align:center; padding:8px 12px; }
+    .decision .label { color:#5d6670; font-size:9px; font-weight:700; letter-spacing:.1em; }
+    .decision strong { font-size:14px; overflow-wrap:anywhere; }
     .decision small { color:#5d6670; font-size:11px; }
     .transition .context { border-color:#dba363; background:var(--orange-bg); }
     .transition .decision { border-color:var(--orange); background:var(--orange-bg); }
-    .transition .decision .symbol { color:var(--orange); }
-    .unattributed .decision .symbol { color:var(--gray); }
     .insufficient .context { border-color:#d9959e; background:var(--red-bg); }
     .insufficient .decision { border-color:var(--red); background:var(--red-bg); }
-    .insufficient .decision .symbol { color:var(--red); }
     footer { display:flex; justify-content:center; gap:22px; margin-top:20px; color:#65717d; font-size:11px; }
     footer span + span::before { content:"·"; margin-right:22px; }
     #loading { padding:210px 20px; text-align:center; color:var(--muted); font-size:18px; }
@@ -70,22 +67,19 @@
   <script>
     const caseNotes = {
       W003: {
-        order:'Window I', className:'unattributed', symbol:'×',
+        order:'Window I', className:'unattributed',
         context:'Preflight · no flight-state transition',
-        evidence:'FBG differs from the same-phase baseline',
-        decision:'not attributable', detail:'to flight state'
+        evidence:'FBG differs from the same-phase baseline'
       },
       W004: {
-        order:'Window II', className:'transition', symbol:'↗',
+        order:'Window II', className:'transition',
         context:'ARM transition at 7.071 s',
-        evidence:'FBG change occurs near a state transition',
-        decision:'transition associated', detail:'contextually attributable'
+        evidence:'FBG change occurs near a state transition'
       },
       W027: {
-        order:'Window III', className:'insufficient', symbol:'!',
+        order:'Window III', className:'insufficient',
         context:'FBG validity 0.30 < 0.80 threshold',
-        evidence:'Quality rule stops interpretation',
-        decision:'insufficient data', detail:'abstain · LLM bypassed'
+        evidence:'Quality rule stops interpretation'
       }
     };
     const esc = value => String(value).replace(
@@ -197,7 +191,11 @@
             <div class="case-head"><strong>${esc(note.order)}</strong><span>${esc(result.window_id)}</span></div>
             <canvas aria-label="FBG waveform for ${esc(result.window_id)}"></canvas>
             <div class="context"><span class="label">Verified flight-state context</span>${esc(note.context)}<br>${esc(note.evidence)}</div>
-            <div class="decision"><span class="symbol">${esc(note.symbol)}</span><strong>${esc(note.decision)}</strong><small>${esc(note.detail)}</small></div>`;
+            <div class="decision">
+              <span class="label">FINAL OUTPUT</span>
+              <strong>${esc(result.constrained_decision)}</strong>
+              <small>abstain: ${result.abstain ? 'yes' : 'no'} · ${result.llm_invoked ? 'LLM invoked' : 'LLM bypassed'}</small>
+            </div>`;
           container.appendChild(article);
           drawFbg(article.querySelector('canvas'), visuals[index]);
         });

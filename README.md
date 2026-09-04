@@ -252,10 +252,14 @@ stage; they must not be represented as validated-DT results.
 
 ### Publication Figure c view
 
-After generating the deliverables and starting Docker Compose, open the detailed inspection UI
-at <http://127.0.0.1:8000/> or the white publication dashboard at
-<http://127.0.0.1:8000/paper>. The publication view reads the generated CSV and JSONL files; its
-counts and representative traces are not hard-coded.
+After generating the deliverables and starting Docker Compose, three views are available:
+
+- <http://127.0.0.1:8000/> — detailed inspection interface.
+- <http://127.0.0.1:8000/paper> — three representative real-window examples.
+- <http://127.0.0.1:8000/paper-timeline> — all constrained decisions aligned to the same full
+  flight timeline used by panels a and b.
+
+Both publication views read the generated CSV and JSONL files; their results are not hard-coded.
 
 Create a reproducible 1800 × 650 PNG screenshot with Chrome or Microsoft Edge:
 
@@ -269,6 +273,16 @@ keeps only an enlarged FBG waveform, one verified flight-state context statement
 constrained decision for each of W003, W004 and W027. Detailed metrics, model execution fields
 and complete traces remain available in the main interface and deliverable files rather than
 being crowded into the paper figure.
+
+Generate both publication alternatives at once:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\capture_paper_figures.ps1
+```
+
+This writes `figure_c_window_examples.png` and `figure_c_flight_timeline.png` under
+`results/deliverables/`. The timeline alternative adds no new interpretation: it rearranges the
+same 90 saved outputs against their real window start/end times and flight-event markers.
 
 ## 10. Interpretation consistency evaluation
 

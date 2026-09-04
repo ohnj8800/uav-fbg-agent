@@ -42,6 +42,10 @@ class AnalysisRequestHandler(BaseHTTPRequestHandler):
                 self._json(200, self.engine.list_windows())
                 return
 
+            if parts == ["v1", "timeline"]:
+                self._json(200, self.engine.timeline())
+                return
+
             if len(parts) == 4 and parts[:2] == ["v1", "windows"]:
                 window_id, action = parts[2], parts[3]
                 if action == "quality":

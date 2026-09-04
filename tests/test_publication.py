@@ -89,6 +89,9 @@ class PublicationResultsTest(unittest.TestCase):
             self.assertEqual(payload["summary"]["llm_invocations"], 2)
             self.assertEqual(payload["summary"]["abstentions"], 1)
             self.assertEqual(payload["summary"]["contract_valid"], 3)
+            self.assertEqual(len(payload["window_outputs"]), 3)
+            self.assertTrue(payload["window_outputs"][2]["abstain"])
+            self.assertFalse(payload["window_outputs"][2]["llm_invoked"])
             self.assertEqual(
                 [item["window_id"] for item in payload["representative_windows"]],
                 ["W003", "W004", "W027"],

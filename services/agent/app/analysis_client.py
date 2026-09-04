@@ -35,6 +35,9 @@ class AnalysisClient:
     def list_windows(self) -> dict[str, Any]:
         return self._get("/v1/windows")
 
+    def timeline(self) -> dict[str, Any]:
+        return self._get("/v1/timeline")
+
     def visualization(self, window_id: str) -> dict[str, Any]:
         encoded = quote(window_id, safe="")
         return self._get(f"/v1/windows/{encoded}/visualization")

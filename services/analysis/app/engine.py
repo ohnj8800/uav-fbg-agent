@@ -24,6 +24,13 @@ class AnalysisEngine:
         window_ids = self.repository.list_window_ids()
         return {"count": len(window_ids), "window_ids": window_ids}
 
+    def timeline(self) -> dict[str, Any]:
+        return {
+            "context_source": "VERIFIED_REAL_STATE",
+            "windows": [self._window_summary(row) for row in self.repository.windows],
+            "events": self.repository.events,
+        }
+
     def quality(self, window_id: str | int) -> dict[str, Any]:
         row = self.repository.get_window(window_id)
         ratio = number(row.get("fbg_validity_ratio")) or 0.0

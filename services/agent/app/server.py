@@ -38,8 +38,12 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         parts = [unquote(part) for part in parsed.path.strip("/").split("/") if part]
-        if parsed.path in {"/", "/app", "/paper"}:
-            filename = "publication.html" if parsed.path == "/paper" else "index.html"
+        if parsed.path in {"/", "/app", "/paper", "/paper-timeline"}:
+            filenames = {
+                "/paper": "publication.html",
+                "/paper-timeline": "publication_timeline.html",
+            }
+            filename = filenames.get(parsed.path, "index.html")
             page = Path(__file__).with_name("static") / filename
             self._html(200, page.read_bytes())
             return
@@ -62,6 +66,12 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/v1/windows":
             try:
                 self._json(200, self.analysis_client.list_windows())
+            except AnalysisServiceError as exc:
+                self._json(502, {"error": str(exc)})
+            return
+        if parsed.path == "/v1/timeline":
+            try:
+                self._json(200, self.analysis_client.timeline())
             except AnalysisServiceError as exc:
                 self._json(502, {"error": str(exc)})
             return

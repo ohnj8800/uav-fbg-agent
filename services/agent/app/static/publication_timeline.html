@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Context-aware interpretation across the flight</title>
+  <style>
+    :root { --ink:#17212c; --muted:#687582; --line:#d8dde3; --consistent:#16888d; --transition:#d97706; --unattributed:#586779; --insufficient:#d9dde2; --llm:#245fa8; --abstain:#aeb6c0; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#fff; color:var(--ink); font-family:Arial,"Noto Sans",sans-serif; }
+    .figure { width:min(1800px,100vw); min-height:650px; margin:auto; padding:23px 42px 18px; position:relative; background:#fff; }
+    .panel-label { position:absolute; left:7px; top:0; font-size:38px; font-weight:800; color:#050505; }
+    header { text-align:center; }
+    h1 { margin:0 0 5px; font-size:29px; }
+    .subtitle { color:var(--muted); font-size:14px; }
+    .legend { display:flex; justify-content:center; flex-wrap:wrap; gap:19px; margin:15px 0 5px; color:#4e5965; font-size:12px; }
+    .legend span { display:inline-flex; align-items:center; gap:6px; }
+    .swatch { width:14px; height:10px; display:inline-block; }
+    canvas { width:100%; height:345px; display:block; }
+    .examples { display:grid; grid-template-columns:repeat(3,1fr); gap:26px; margin:5px 45px 0 115px; }
+    .example { border-left:4px solid var(--unattributed); padding:4px 10px; min-width:0; }
+    .example.transition { border-color:var(--transition); }
+    .example.insufficient { border-color:#b24a58; }
+    .example strong { display:block; font-size:13px; margin-bottom:4px; }
+    .example span { display:block; color:var(--muted); font-size:11px; line-height:1.35; }
+    .example code { font-family:Arial,"Noto Sans",sans-serif; color:var(--ink); font-weight:700; font-size:11px; }
+    footer { margin-top:15px; text-align:center; color:var(--muted); font-size:11px; }
+    #loading { padding:220px 20px; text-align:center; color:var(--muted); font-size:18px; }
+    #error { display:none; margin:120px auto; max-width:760px; border:1px solid #e2a1a9; background:#fff5f6; color:#842536; padding:24px; border-radius:10px; line-height:1.6; }
+    @media (max-width:900px) {
+      .figure { padding:24px; }
+      canvas { height:380px; }
+      .examples { grid-template-columns:1fr; margin:8px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="figure">
+    <div class="panel-label">c</div>
+    <header>
+      <h1>Context-aware interpretation across the flight</h1>
+      <div class="subtitle">Constrained Agent outputs aligned with the 0–180 s flight timeline</div>
+    </header>
+    <div id="loading">Loading verified local results…</div>
+    <div id="error"></div>
+    <section id="content" hidden>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--consistent)"></i>State consistent</span>
+        <span><i class="swatch" style="background:var(--transition)"></i>Transition associated</span>
+        <span><i class="swatch" style="background:var(--unattributed)"></i>Not attributable</span>
+        <span><i class="swatch" style="background:var(--insufficient)"></i>Insufficient data</span>
+        <span><i class="swatch" style="background:var(--llm)"></i>LLM invoked</span>
+      </div>
+      <canvas id="timeline" width="1700" height="345" aria-label="Constrained decisions and Agent actions across all flight windows"></canvas>
+      <div class="examples">
+        <div class="example"><strong>W003 · preflight</strong><span>No state transition → <code>NOT_ATTRIBUTABLE</code></span></div>
+        <div class="example transition"><strong>W004 · ARM at 7.071 s</strong><span>State transition → <code>TRANSITION_ASSOCIATED</code></span></div>
+        <div class="example insufficient"><strong>W027 · FBG validity 0.30</strong><span>Quality rule → <code>INSUFFICIENT_DATA</code> (abstain)</span></div>
+      </div>
+      <footer id="summary"></footer>
+    </section>
+  </main>
+  <script>
+    const colors = {
+      STATE_CONSISTENT:'#16888d', TRANSITION_ASSOCIATED:'#d97706',
+      NOT_ATTRIBUTABLE_TO_FLIGHT_STATE:'#586779', INSUFFICIENT_DATA:'#d9dde2',
+      llm:'#245fa8', abstain:'#aeb6c0', ink:'#17212c', muted:'#687582', line:'#d8dde3'
+    };
+    async function getJson(url) {
+      const response = await fetch(url);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      return data;
+    }
+    function draw(publication, timeline) {
+      const canvas = document.getElementById('timeline');
+      const ratio = window.devicePixelRatio || 1;
+      const width = Math.max(900, Math.round(canvas.clientWidth * ratio));
+      const height = Math.round(canvas.clientHeight * ratio);
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(ratio, ratio);
+      const W = width / ratio, H = height / ratio;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
+      const left=115, right=25, plotW=W-left-right;
+      const windowsById = new Map(timeline.windows.map(item => [item.window_id,item]));
+      const outputs = publication.window_outputs
+        .map(item => ({...item,...(windowsById.get(item.window_id)||{})}))
+        .filter(item => Number.isFinite(item.t_start_s) && Number.isFinite(item.t_end_s));
+      const start = Math.min(...outputs.map(item=>item.t_start_s));
+      const end = Math.max(...outputs.map(item=>item.t_end_s));
+      const x = value => left + plotW * (value-start) / Math.max(end-start,1);
+
+      ctx.font='12px Arial'; ctx.textBaseline='middle';
+      const lane = (label,y,h) => {
+        ctx.strokeStyle=colors.line; ctx.lineWidth=1; ctx.strokeRect(left,y,plotW,h);
+        ctx.fillStyle=colors.muted; ctx.textAlign='right'; ctx.fillText(label,left-12,y+h/2);
+      };
+      lane('Constrained decision',70,78);
+      lane('Agent action',185,48);
+      outputs.forEach(item => {
+        const x0=x(item.t_start_s), x1=x(item.t_end_s);
+        ctx.fillStyle=colors[item.constrained_decision]||colors.unattributed;
+        ctx.fillRect(x0+.5,71,Math.max(1,x1-x0-1),76);
+        ctx.fillStyle=item.llm_invoked?colors.llm:colors.abstain;
+        ctx.fillRect(x0+.5,186,Math.max(1,x1-x0-1),46);
+      });
+      const eventLabels={arm:'ARM',flight_onset:'flight onset',land:'LAND',disarm:'DISARM'};
+      (timeline.events||[]).forEach(event => {
+        if (!eventLabels[event.event] || !Number.isFinite(event.t_s)) return;
+        const px=x(event.t_s);
+        ctx.strokeStyle=colors.muted; ctx.setLineDash([5,4]); ctx.lineWidth=1.2;
+        ctx.beginPath(); ctx.moveTo(px,35); ctx.lineTo(px,252); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle=colors.ink; ctx.textAlign='center'; ctx.font='12px Arial';
+        const labelY=event.event==='disarm'?43:22;
+        ctx.fillText(eventLabels[event.event],px,labelY);
+      });
+
+      const axisY=272;
+      ctx.strokeStyle=colors.line; ctx.beginPath(); ctx.moveTo(left,axisY); ctx.lineTo(W-right,axisY); ctx.stroke();
+      const firstTick=Math.ceil(start/30)*30;
+      for(let value=firstTick;value<=end;value+=30){
+        const px=x(value); ctx.beginPath();ctx.moveTo(px,axisY-4);ctx.lineTo(px,axisY+4);ctx.stroke();
+        ctx.fillStyle=colors.muted;ctx.textAlign='center';ctx.font='12px Arial';ctx.fillText(String(value),px,290);
+      }
+      ctx.fillText('Time (s)',left+plotW/2,317);
+    }
+    async function load() {
+      try {
+        const [publication,timeline] = await Promise.all([
+          getJson('/v1/publication'), getJson('/v1/timeline')
+        ]);
+        document.getElementById('loading').hidden=true;
+        document.getElementById('content').hidden=false;
+        draw(publication,timeline);
+        const s=publication.summary;
+        document.getElementById('summary').textContent = `${s.windows} windows · ${s.llm_invocations} LLM interpretations · ${s.abstentions} deterministic abstentions · ${s.fallbacks} fallback · ${s.contract_valid}/${s.windows} contract valid (not accuracy)`;
+      } catch(error) {
+        document.getElementById('loading').hidden=true;
+        const box=document.getElementById('error');box.style.display='block';
+        box.textContent=`Timeline view is unavailable: ${error.message}. Run python scripts\\generate_deliverables.py first.`;
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

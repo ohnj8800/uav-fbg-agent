@@ -14,6 +14,10 @@ class PublicationResultsError(RuntimeError):
     pass
 
 
+def _csv_bool(value: Any) -> bool:
+    return str(value).strip().lower() == "true"
+
+
 def load_publication_results(directory: Path) -> dict[str, Any]:
     directory = Path(directory)
     outputs_path = directory / "llm_window_outputs.csv"
@@ -59,9 +63,9 @@ def load_publication_results(directory: Path) -> dict[str, Any]:
             ) from exc
 
     decisions = Counter(str(row.get("constrained_decision")) for row in rows)
-    llm_invocations = sum(str(row.get("llm_invoked", "")).lower() == "true" for row in rows)
-    abstentions = sum(str(row.get("abstain", "")).lower() == "true" for row in rows)
-    fallbacks = sum(str(row.get("fallback_used", "")).lower() == "true" for row in rows)
+    llm_invocations = sum(_csv_bool(row.get("llm_invoked")) for row in rows)
+    abstentions = sum(_csv_bool(row.get("abstain")) for row in rows)
+    fallbacks = sum(_csv_bool(row.get("fallback_used")) for row in rows)
     valid_contracts = sum(
         str(row.get("contract_valid", "")).lower() == "true" for row in eval_rows
     )
@@ -87,6 +91,16 @@ def load_publication_results(directory: Path) -> dict[str, Any]:
         if len(planner_models) <= 1
         else "MIXED",
         "representative_windows": selected,
+        "window_outputs": [
+            {
+                "window_id": str(row.get("window_id", "")).upper(),
+                "constrained_decision": row.get("constrained_decision"),
+                "abstain": _csv_bool(row.get("abstain")),
+                "llm_invoked": _csv_bool(row.get("llm_invoked")),
+                "fallback_used": _csv_bool(row.get("fallback_used")),
+            }
+            for row in rows
+        ],
         "summary": {
             "windows": len(rows),
             "llm_invocations": llm_invocations,
