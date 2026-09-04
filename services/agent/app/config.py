@@ -13,6 +13,7 @@ class Settings:
     ollama_model: str = "qwen3:8b"
     max_steps: int = 6
     audit_log_path: Path = Path("runtime/audit.jsonl")
+    deliverables_dir: Path = Path("results/deliverables")
     host: str = "0.0.0.0"
     port: int = 8000
 
@@ -29,6 +30,9 @@ class Settings:
             ollama_model=os.getenv("OLLAMA_MODEL", "qwen3:8b"),
             max_steps=int(os.getenv("AGENT_MAX_STEPS", "6")),
             audit_log_path=Path(os.getenv("AUDIT_LOG_PATH", "runtime/audit.jsonl")),
+            deliverables_dir=Path(
+                os.getenv("DELIVERABLES_DIR", "results/deliverables")
+            ),
             host=os.getenv("AGENT_HOST", "0.0.0.0"),
             port=int(os.getenv("AGENT_PORT", "8000")),
         )

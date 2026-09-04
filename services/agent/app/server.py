@@ -9,11 +9,13 @@ from .analysis_client import AnalysisClient, AnalysisServiceError
 from .config import Settings
 from .orchestrator import AgentOrchestrator, AuditLog
 from .planner import build_planner
+from .publication import PublicationResultsError, load_publication_results
 
 
 class AgentRequestHandler(BaseHTTPRequestHandler):
     orchestrator: AgentOrchestrator
     analysis_client: AnalysisClient
+    deliverables_dir: Path
 
     def log_message(self, format: str, *args: object) -> None:
         print(f"agent-service: {format % args}")
@@ -36,8 +38,9 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         parts = [unquote(part) for part in parsed.path.strip("/").split("/") if part]
-        if parsed.path in {"/", "/app"}:
-            page = Path(__file__).with_name("static") / "index.html"
+        if parsed.path in {"/", "/app", "/paper"}:
+            filename = "publication.html" if parsed.path == "/paper" else "index.html"
+            page = Path(__file__).with_name("static") / filename
             self._html(200, page.read_bytes())
             return
         if parsed.path == "/health":
@@ -61,6 +64,12 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 self._json(200, self.analysis_client.list_windows())
             except AnalysisServiceError as exc:
                 self._json(502, {"error": str(exc)})
+            return
+        if parsed.path == "/v1/publication":
+            try:
+                self._json(200, load_publication_results(self.deliverables_dir))
+            except PublicationResultsError as exc:
+                self._json(503, {"error": str(exc)})
             return
         if (
             len(parts) == 4
@@ -109,7 +118,11 @@ def create_server(settings: Settings) -> ThreadingHTTPServer:
     handler = type(
         "ConfiguredAgentHandler",
         (AgentRequestHandler,),
-        {"orchestrator": orchestrator, "analysis_client": client},
+        {
+            "orchestrator": orchestrator,
+            "analysis_client": client,
+            "deliverables_dir": settings.deliverables_dir,
+        },
     )
     return ThreadingHTTPServer((settings.host, settings.port), handler)
 

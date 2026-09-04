@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Context-aware constrained LLM interpretation</title>
+  <style>
+    :root { --ink:#162332; --muted:#64748b; --line:#d8e0e8; --blue:#1769aa; --teal:#16888d; --orange:#d97706; --red:#c9364f; --gray:#586779; --soft:#f4f7fa; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#fff; color:var(--ink); font-family:Arial,"Noto Sans",sans-serif; }
+    .figure { width:min(1800px,100vw); min-height:820px; margin:auto; padding:27px 35px 24px; position:relative; background:#fff; }
+    .panel-label { position:absolute; left:7px; top:2px; font-size:38px; font-weight:800; color:#050505; }
+    header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; border-bottom:2px solid #1d7b82; padding:0 3px 17px; }
+    h1 { font-size:28px; margin:0 0 7px; letter-spacing:.01em; }
+    .subtitle { color:var(--muted); font-size:15px; }
+    .pipeline { color:#145d65; border:1px solid #9ccdd0; background:#eefafa; border-radius:9px; padding:10px 15px; font-weight:700; font-size:14px; white-space:nowrap; }
+    .meta { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
+    .pill { border:1px solid #b8c6d4; background:#f8fafc; border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700; }
+    .cases { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+    .case { border:1px solid var(--line); border-top:5px solid var(--gray); border-radius:12px; padding:14px 15px 13px; box-shadow:0 3px 12px #1e293b13; min-width:0; }
+    .case.transition { border-top-color:var(--orange); }
+    .case.insufficient { border-top-color:var(--red); }
+    .case-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; }
+    .window { font-size:20px; font-weight:800; }
+    .status { font-size:10px; font-weight:800; letter-spacing:.05em; border-radius:999px; padding:5px 8px; color:#fff; background:var(--gray); }
+    .transition .status { background:var(--orange); }
+    .insufficient .status { background:var(--red); }
+    canvas { width:100%; height:190px; background:#fbfdff; border:1px solid #dbe4ec; border-radius:7px; display:block; }
+    .context { margin:10px 0; padding:9px 10px; background:#f2f7f8; border-left:4px solid var(--teal); font-size:12px; line-height:1.45; min-height:58px; }
+    .evidence-label { color:var(--muted); text-transform:uppercase; font-size:10px; font-weight:800; letter-spacing:.08em; margin-bottom:4px; }
+    .evidence { font-size:12px; line-height:1.42; min-height:51px; }
+    .decision { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:10px; padding:10px 11px; border:1px solid #aebbc8; border-radius:8px; background:#f8fafc; }
+    .decision strong { font-size:14px; line-height:1.2; }
+    .decision small { color:var(--muted); line-height:1.35; text-align:right; }
+    .transition .decision { border-color:#e8b46f; background:#fff8ed; }
+    .insufficient .decision { border-color:#e7a1ad; background:#fff4f6; }
+    .trace { margin-top:9px; color:#46576a; font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .summary { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-top:16px; }
+    .stat { text-align:center; border:1px solid #cbd7e2; background:var(--soft); border-radius:9px; padding:9px 8px; }
+    .stat strong { display:block; font-size:21px; color:#165f68; }
+    .stat span { display:block; margin-top:3px; color:#536579; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.035em; }
+    footer { display:flex; justify-content:space-between; gap:20px; margin-top:11px; font-size:10.5px; color:#6b7a8b; }
+    #loading { padding:150px 20px; text-align:center; color:var(--muted); font-size:18px; }
+    #error { display:none; margin:80px auto; max-width:760px; border:1px solid #e8a3af; background:#fff5f6; color:#8b2035; padding:24px; border-radius:10px; line-height:1.6; }
+    @media (max-width:1000px) { .figure{padding:25px}.cases{grid-template-columns:1fr}.summary{grid-template-columns:repeat(2,1fr)} header{display:block}.pipeline{display:inline-block;margin-top:12px} }
+  </style>
+</head>
+<body>
+  <main class="figure">
+    <div class="panel-label">c</div>
+    <header>
+      <div><h1>Context-aware constrained LLM interpretation</h1><div class="subtitle">FBG evidence combined with verified DataFlash real-state context</div></div>
+      <div class="pipeline">Rules → Evidence → Restricted LLM</div>
+    </header>
+    <div id="loading">Loading verified local results…</div>
+    <div id="error"></div>
+    <section id="content" hidden>
+      <div class="meta">
+        <span class="pill" id="modelPill">Model: —</span>
+        <span class="pill" id="contextPill">Context: —</span>
+        <span class="pill">Four-class constrained output</span>
+        <span class="pill">Deterministic abstention enabled</span>
+      </div>
+      <div id="cases" class="cases"></div>
+      <div class="summary">
+        <div class="stat"><strong id="nWindows">—</strong><span>Windows processed</span></div>
+        <div class="stat"><strong id="nLlm">—</strong><span>LLM interpretations</span></div>
+        <div class="stat"><strong id="nAbstain">—</strong><span>Deterministic abstentions</span></div>
+        <div class="stat"><strong id="nFallback">—</strong><span>Fallback runs</span></div>
+        <div class="stat"><strong id="nValid">—</strong><span>Contract valid</span></div>
+      </div>
+      <footer><span>Development result using verified real-state context; not validated-DT output.</span><span>Evaluation covers contract, safety and trace completeness—not classification accuracy.</span></footer>
+    </section>
+  </main>
+  <script>
+    const caseNotes = {
+      W003: {className:'unattributed', label:'NOT ATTRIBUTABLE', context:'Preflight · no flight-state transition', detail:'Abstain: NO · LLM: INVOKED'},
+      W004: {className:'transition', label:'TRANSITION ASSOCIATED', context:'ARM transition at 7.071 s', detail:'Abstain: NO · LLM: INVOKED'},
+      W027: {className:'insufficient', label:'INSUFFICIENT DATA', context:'FBG validity 0.30 < required 0.80', detail:'Abstain: YES · LLM: BYPASSED'}
+    };
+    const fmt = v => v === null || v === undefined ? '—' : Number.isFinite(Number(v)) ? Number(v).toFixed(3).replace(/0+$/,'').replace(/\.$/,'') : String(v);
+    const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    async function getJson(url) { const response=await fetch(url); const data=await response.json(); if(!response.ok) throw new Error(data.error||`HTTP ${response.status}`); return data; }
+    function draw(canvas, visual) {
+      const ctx=canvas.getContext('2d'), rows=visual.samples||[], W=canvas.width, H=canvas.height;
+      ctx.fillStyle='#fbfdff';ctx.fillRect(0,0,W,H);if(!rows.length)return;
+      const tracks=[['fbg_delta_nm','#1769aa','FBG Δλ (nm)'],['pitch_deg','#16888d','Pitch (deg)'],['roll_deg','#d97706','Roll (deg)']];
+      const left=76,right=8,top=8,trackH=(H-22)/3,x=i=>left+(W-left-right)*i/Math.max(rows.length-1,1);
+      ctx.font='10px Arial';
+      tracks.forEach(([key,color,label],k)=>{
+        const values=rows.map(r=>r[key]).filter(Number.isFinite);let lo=Math.min(...values),hi=Math.max(...values);if(lo===hi){lo-=.5;hi+=.5}
+        const y0=top+k*trackH,y=v=>y0+trackH-10-(v-lo)/(hi-lo)*(trackH-18);
+        ctx.strokeStyle='#dfe7ee';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y0+trackH-6);ctx.lineTo(W-right,y0+trackH-6);ctx.stroke();
+        ctx.fillStyle=color;ctx.fillText(label,5,y0+15);ctx.fillStyle='#7a8a9b';ctx.fillText(`${fmt(lo)}…${fmt(hi)}`,5,y0+29);
+        ctx.strokeStyle=color;ctx.lineWidth=1.7;ctx.beginPath();let started=false;
+        rows.forEach((row,i)=>{const v=row[key];if(!Number.isFinite(v)){started=false;return}if(!started){ctx.moveTo(x(i),y(v));started=true}else ctx.lineTo(x(i),y(v));});ctx.stroke();
+        if(key==='fbg_delta_nm'){ctx.fillStyle='#c9364f';rows.forEach((row,i)=>{if(row.fbg_valid===false&&Number.isFinite(row[key])){ctx.beginPath();ctx.arc(x(i),y(row[key]),2.1,0,Math.PI*2);ctx.fill();}})}
+      });
+    }
+    function traceText(result) {
+      const tools=(result.tool_trace||[]).map(item=>item.executed_tool);
+      if(result.abstain) return `${tools.join(' → ')} → deterministic abstention`;
+      return `${tools.join(' → ')} → constrained decision`;
+    }
+    async function load() {
+      try {
+        const payload=await getJson('/v1/publication');
+        const results=payload.representative_windows;
+        const visuals=await Promise.all(results.map(r=>getJson(`/v1/windows/${r.window_id}/visualization`)));
+        const container=document.getElementById('cases');
+        results.forEach((result,index)=>{
+          const note=caseNotes[result.window_id]||caseNotes.W003, ev=result.evidence_data||{}, fbg=ev.fbg||{};
+          const article=document.createElement('article');article.className=`case ${note.className}`;
+          article.innerHTML=`<div class="case-head"><span class="window">${esc(result.window_id)}</span><span class="status">${esc(note.label)}</span></div><canvas width="500" height="210"></canvas><div class="context"><strong>Verified context</strong><br>${esc(note.context)} · FBG validity ${esc(fmt(fbg.validity_ratio))}</div><div class="evidence-label">Evidence</div><div class="evidence">${esc((result.evidence||[]).join(' · '))}</div><div class="decision"><strong>${esc(result.constrained_decision.replaceAll('_',' '))}</strong><small>${esc(note.detail)}</small></div><div class="trace">${esc(traceText(result))}</div>`;
+          container.appendChild(article);draw(article.querySelector('canvas'),visuals[index]);
+        });
+        const s=payload.summary;document.getElementById('modelPill').textContent=`Model: ${payload.planner_model||'not recorded'}`;document.getElementById('contextPill').textContent=`Context: ${payload.context_source.replaceAll('_',' ')}`;document.getElementById('nWindows').textContent=s.windows;document.getElementById('nLlm').textContent=s.llm_invocations;document.getElementById('nAbstain').textContent=s.abstentions;document.getElementById('nFallback').textContent=s.fallbacks;document.getElementById('nValid').textContent=`${s.contract_valid}/${s.windows}`;
+        document.getElementById('loading').hidden=true;document.getElementById('content').hidden=false;
+      } catch(error) {
+        document.getElementById('loading').hidden=true;const box=document.getElementById('error');box.style.display='block';box.textContent=`Publication view is unavailable: ${error.message}. Run python scripts\\generate_deliverables.py and keep results/deliverables mounted read-only.`;
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

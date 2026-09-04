@@ -25,6 +25,7 @@ class HttpIntegrationTest(unittest.TestCase):
             raise unittest.SkipTest("Lab CSV files are not present")
 
         cls.temp_dir = tempfile.TemporaryDirectory()
+        cls.publication_dir = Path(cls.temp_dir.name) / "publication-deliverables"
         cls.analysis_server = create_analysis_server(
             AnalysisSettings(
                 window_features_csv=windows,
@@ -46,6 +47,7 @@ class HttpIntegrationTest(unittest.TestCase):
                 llm_mode="heuristic",
                 max_steps=6,
                 audit_log_path=Path(cls.temp_dir.name) / "audit.jsonl",
+                deliverables_dir=cls.publication_dir,
                 host="127.0.0.1",
                 port=0,
             )
@@ -140,6 +142,12 @@ class HttpIntegrationTest(unittest.TestCase):
         self.assertEqual(plot["window_id"], "W004")
         self.assertEqual(plot["context_source"], "VERIFIED_REAL_STATE")
         self.assertGreater(len(plot["samples"]), 0)
+        with urlopen(
+            f"http://127.0.0.1:{self.agent_port}/paper", timeout=5
+        ) as response:
+            publication_html = response.read().decode("utf-8")
+        self.assertIn("Context-aware constrained LLM interpretation", publication_html)
+        self.assertIn("Deterministic abstention enabled", publication_html)
 
     def test_batch_client_writes_csv_jsonl_and_summary(self) -> None:
         output_dir = Path(self.temp_dir.name) / "batch-test"
@@ -155,7 +163,7 @@ class HttpIntegrationTest(unittest.TestCase):
 
     def test_requested_deliverables_and_three_figures_are_created(self) -> None:
         base = Path(__file__).resolve().parents[1]
-        output_dir = Path(self.temp_dir.name) / "deliverables-test"
+        output_dir = self.publication_dir
         summary = generate_deliverables(
             f"http://127.0.0.1:{self.agent_port}",
             output_dir,
@@ -173,6 +181,16 @@ class HttpIntegrationTest(unittest.TestCase):
         self.assertEqual(len(summary["outputs"]["window_figures"]), 3)
         for figure in summary["outputs"]["window_figures"]:
             self.assertIn("<svg", Path(figure).read_text(encoding="utf-8"))
+        with urlopen(
+            f"http://127.0.0.1:{self.agent_port}/v1/publication", timeout=5
+        ) as response:
+            publication = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(publication["summary"]["windows"], 3)
+        self.assertEqual(publication["summary"]["contract_valid"], 3)
+        self.assertEqual(
+            [row["window_id"] for row in publication["representative_windows"]],
+            ["W003", "W004", "W027"],
+        )
 
 
 if __name__ == "__main__":

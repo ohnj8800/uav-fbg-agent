@@ -35,8 +35,10 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
       AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-6}
       AUDIT_LOG_PATH: /app/runtime/audit.jsonl
+      DELIVERABLES_DIR: /app/deliverables
     volumes:
       - ./runtime:/app/runtime
+      - ./results/deliverables:/app/deliverables:ro
     ports:
       - "8000:8000"
     extra_hosts:
