@@ -146,8 +146,9 @@ class HttpIntegrationTest(unittest.TestCase):
             f"http://127.0.0.1:{self.agent_port}/paper", timeout=5
         ) as response:
             publication_html = response.read().decode("utf-8")
-        self.assertIn("Context-aware constrained LLM interpretation", publication_html)
-        self.assertIn("Deterministic abstention enabled", publication_html)
+        self.assertIn("Contextual interpretation examples", publication_html)
+        self.assertIn("FBG evidence + verified flight-state context", publication_html)
+        self.assertNotIn("Windows processed", publication_html)
 
     def test_batch_client_writes_csv_jsonl_and_summary(self) -> None:
         output_dir = Path(self.temp_dir.name) / "batch-test"

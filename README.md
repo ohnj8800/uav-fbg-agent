@@ -257,17 +257,18 @@ at <http://127.0.0.1:8000/> or the white publication dashboard at
 <http://127.0.0.1:8000/paper>. The publication view reads the generated CSV and JSONL files; its
 counts and representative traces are not hard-coded.
 
-Create a reproducible 1800 × 850 PNG screenshot with Chrome or Microsoft Edge:
+Create a reproducible 1800 × 650 PNG screenshot with Chrome or Microsoft Edge:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\capture_publication_view.ps1
 ```
 
 The image is written to
-`results/deliverables/figure_c_publication_dashboard.png`. It shows W003, W004 and W027 as
-representative contextual interpretations and explicitly labels the current context as verified
-real state rather than validated DT. The evaluation footer intentionally reports contract,
-safety and trace completeness instead of unsupported classification accuracy.
+`results/deliverables/figure_c_publication_dashboard.png`. The publication panel intentionally
+keeps only an enlarged FBG waveform, one verified flight-state context statement and one
+constrained decision for each of W003, W004 and W027. Detailed metrics, model execution fields
+and complete traces remain available in the main interface and deliverable files rather than
+being crowded into the paper figure.
 
 ## 10. Interpretation consistency evaluation
 

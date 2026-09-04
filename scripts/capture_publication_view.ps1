@@ -32,7 +32,7 @@ $browserArguments = @(
     "--hide-scrollbars"
     "--no-first-run"
     "--no-default-browser-check"
-    "--window-size=1800,850"
+    "--window-size=1800,650"
     "--force-device-scale-factor=1"
     "--virtual-time-budget=5000"
     "--user-data-dir=$profileDirectory"
