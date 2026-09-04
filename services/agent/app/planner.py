@@ -18,9 +18,11 @@ ALLOWED_ACTIONS = {
 ALLOWED_DECISIONS = {
     "STATE_CONSISTENT",
     "TRANSITION_ASSOCIATED",
-    "NOT_ATTRIBUTABLE_TO_FLIGHT_STATE",
+    "NOT_ATTRIBUTABLE",
     "INSUFFICIENT_DATA",
 }
+
+PROMPT_VERSION = "uav_fbg_real_log_v1"
 
 
 class Planner(ABC):
@@ -250,7 +252,7 @@ class OllamaPlanner(Planner):
         prompt = (
             "Interpret the supplied UAV flight context and FBG evidence. Choose exactly one "
             "decision from STATE_CONSISTENT, TRANSITION_ASSOCIATED, "
-            "NOT_ATTRIBUTABLE_TO_FLIGHT_STATE, INSUFFICIENT_DATA. Never override an "
+            "NOT_ATTRIBUTABLE, INSUFFICIENT_DATA. Never override an "
             "insufficient-data quality result. Use only supplied evidence. Return JSON only as "
             "{\"decision\": \"...\", \"evidence\": [\"...\"]}.\n"
             f"window_id={window_id}\n"

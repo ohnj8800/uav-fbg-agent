@@ -81,7 +81,7 @@ class HttpIntegrationTest(unittest.TestCase):
         result = self.analyze("W027")
         self.assertEqual(result["decision"], "INSUFFICIENT_DATA")
         self.assertTrue(result["guardrail_applied"])
-        self.assertEqual(result["tools_called"], ["check_quality"])
+        self.assertEqual(result["tools_called"], ["check_quality", "get_context"])
         self.assertFalse(result["planner_invoked"])
         self.assertFalse(result["llm_invoked"])
         self.assertEqual(result["llm_attempts"], 0)
@@ -89,7 +89,10 @@ class HttpIntegrationTest(unittest.TestCase):
         self.assertAlmostEqual(
             result["evidence_data"]["fbg"]["validity_ratio"], 0.30
         )
-        self.assertIsNone(result["evidence_data"]["real_flight_context"])
+        self.assertEqual(
+            result["evidence_data"]["real_flight_context"]["context_validity"],
+            "VALID",
+        )
         self.assertIsNone(result["planner_model"])
 
     def test_w008_end_to_end_transition(self) -> None:
@@ -140,14 +143,14 @@ class HttpIntegrationTest(unittest.TestCase):
         ) as response:
             plot = json.loads(response.read().decode("utf-8"))
         self.assertEqual(plot["window_id"], "W004")
-        self.assertEqual(plot["context_source"], "VERIFIED_REAL_STATE")
+        self.assertEqual(plot["context_source"], "REAL_LOG_REFERENCE_ONLY")
         self.assertGreater(len(plot["samples"]), 0)
         with urlopen(
             f"http://127.0.0.1:{self.agent_port}/paper", timeout=5
         ) as response:
             publication_html = response.read().decode("utf-8")
         self.assertIn("Contextual interpretation examples", publication_html)
-        self.assertIn("FBG evidence + verified flight-state context", publication_html)
+        self.assertIn("Precomputed FBG evidence + REAL_LOG context", publication_html)
         self.assertIn("FINAL OUTPUT", publication_html)
         self.assertIn("result.constrained_decision", publication_html)
         self.assertNotIn("Windows processed", publication_html)
@@ -198,6 +201,8 @@ class HttpIntegrationTest(unittest.TestCase):
         self.assertEqual(len(summary["outputs"]["window_figures"]), 3)
         for figure in summary["outputs"]["window_figures"]:
             self.assertIn("<svg", Path(figure).read_text(encoding="utf-8"))
+        self.assertTrue(Path(summary["outputs"]["publication_figure_png"]).exists())
+        self.assertTrue(Path(summary["outputs"]["publication_figure_svg"]).exists())
         with urlopen(
             f"http://127.0.0.1:{self.agent_port}/v1/publication", timeout=5
         ) as response:

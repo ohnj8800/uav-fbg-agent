@@ -8,17 +8,23 @@ from .repository import CsvRepository, normalize_window_id, number
 DECISIONS = {
     "STATE_CONSISTENT",
     "TRANSITION_ASSOCIATED",
-    "NOT_ATTRIBUTABLE_TO_FLIGHT_STATE",
+    "NOT_ATTRIBUTABLE",
     "INSUFFICIENT_DATA",
 }
 
 
 class AnalysisEngine:
-    def __init__(self, repository: CsvRepository, validity_threshold: float = 0.80) -> None:
+    def __init__(
+        self,
+        repository: CsvRepository,
+        validity_threshold: float = 0.80,
+        real_context_start_s: float = 7.1,
+    ) -> None:
         if not 0.0 <= validity_threshold <= 1.0:
             raise ValueError("validity_threshold must be between 0 and 1")
         self.repository = repository
         self.validity_threshold = validity_threshold
+        self.real_context_start_s = real_context_start_s
 
     def list_windows(self) -> dict[str, Any]:
         window_ids = self.repository.list_window_ids()
@@ -26,7 +32,7 @@ class AnalysisEngine:
 
     def timeline(self) -> dict[str, Any]:
         return {
-            "context_source": "VERIFIED_REAL_STATE",
+            "context_source": "REAL_LOG",
             "windows": [self._window_summary(row) for row in self.repository.windows],
             "events": self.repository.events,
         }
@@ -53,15 +59,23 @@ class AnalysisEngine:
         row = self.repository.get_window(window_id)
         start_s = number(row.get("t_start_s")) or 0.0
         end_s = number(row.get("t_end_s")) or start_s
+        if end_s <= self.real_context_start_s:
+            context_validity = "INVALID"
+        elif start_s < self.real_context_start_s:
+            context_validity = "PARTIAL"
+        else:
+            context_validity = "VALID"
         return {
             "window_id": normalize_window_id(window_id),
             "t_start_s": start_s,
             "t_end_s": end_s,
+            "context_source": "REAL_LOG",
+            "context_validity": context_validity,
+            "reliable_overlap_start_s": self.real_context_start_s,
             "flight_phase": row.get("flight_phase_majority"),
             "mode_name": row.get("mode_name_majority"),
             "armed_fraction": number(row.get("armed_fraction")),
             "airborne_fraction": number(row.get("airborne_fraction")),
-            "events_in_window": self.repository.events_for_interval(start_s, end_s),
             "attitude": {
                 "roll_mean_deg": number(row.get("roll_mean_deg")),
                 "roll_std_deg": number(row.get("roll_std_deg")),
@@ -72,6 +86,17 @@ class AnalysisEngine:
             "control_error": {
                 "roll_pid_rms": number(row.get("pidr_err_rms")),
                 "pitch_pid_rms": number(row.get("pidp_err_rms")),
+            },
+            "rates": {
+                "roll_rate_rms_deg_s": number(row.get("roll_rate_rms_deg_s")),
+                "pitch_rate_rms_deg_s": number(row.get("pitch_rate_rms_deg_s")),
+                "yaw_rate_rms_deg_s": number(row.get("yaw_rate_rms_deg_s")),
+            },
+            "motor_output": {
+                "c1_mean_us": number(row.get("rcou_c1_mean_us")),
+                "c2_mean_us": number(row.get("rcou_c2_mean_us")),
+                "c3_mean_us": number(row.get("rcou_c3_mean_us")),
+                "c4_mean_us": number(row.get("rcou_c4_mean_us")),
             },
         }
 
@@ -85,7 +110,7 @@ class AnalysisEngine:
             "window_id": normalize_window_id(window_id),
             "t_start_s": start_s,
             "t_end_s": end_s,
-            "context_source": "VERIFIED_REAL_STATE",
+            "context_source": "REAL_LOG_REFERENCE_ONLY",
             "samples": [
                 {
                     "t_s": number(sample.get("t_from_fbg_start_s")),
@@ -185,17 +210,15 @@ class AnalysisEngine:
         transition_fraction = any(
             value is not None and 0.0 < value < 1.0 for value in (armed, airborne)
         )
-        if context.get("events_in_window") or transition_fraction:
-            reasons = ["Flight-state transition is present in the window"]
-            reasons.extend(
-                f"Event {event['event']} occurred at {event['t_s']:.3f} s"
-                for event in context.get("events_in_window", [])
+        if transition_fraction:
+            return (
+                "TRANSITION_ASSOCIATED",
+                ["Window-level REAL_LOG statistics indicate a flight-state transition"],
             )
-            return "TRANSITION_ASSOCIATED", reasons
 
         if robust_z is not None and abs(robust_z) >= 3.5:
             return (
-                "NOT_ATTRIBUTABLE_TO_FLIGHT_STATE",
+                "NOT_ATTRIBUTABLE",
                 [f"FBG RMS differs from the same-phase baseline (robust z={robust_z:.2f})"],
             )
 

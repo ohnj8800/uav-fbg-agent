@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 ALLOWED_DECISIONS = {
     "STATE_CONSISTENT",
     "TRANSITION_ASSOCIATED",
-    "NOT_ATTRIBUTABLE_TO_FLIGHT_STATE",
+    "NOT_ATTRIBUTABLE",
     "INSUFFICIENT_DATA",
 }
 
@@ -55,11 +55,12 @@ def validate_result(result: dict[str, Any]) -> list[str]:
         violations.append("abstain must match INSUFFICIENT_DATA decision")
     if abstain and not result.get("abstain_reason"):
         violations.append("an abstained result must include abstain_reason")
-    if result.get("context_source") not in {
-        "VERIFIED_REAL_STATE",
-        "VALIDATED_DT_CONTEXT",
-    }:
+    if result.get("abstained") != abstain:
+        violations.append("abstained must match abstain")
+    if result.get("context_source") != "REAL_LOG":
         violations.append("context_source is not recognized")
+    if result.get("context_validity") not in {"NOT_EVALUATED", "INVALID", "PARTIAL", "VALID"}:
+        violations.append("context_validity is not recognized")
     if result.get("result_stage") not in {"DEVELOPMENT", "FORMAL"}:
         violations.append("result_stage is not recognized")
 
@@ -83,6 +84,13 @@ def validate_result(result: dict[str, Any]) -> list[str]:
         isinstance(item, str) for item in evidence
     ):
         violations.append("evidence must be a list of strings")
+    for field in ("evidence_fbg", "evidence_context"):
+        value = result.get(field)
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            violations.append(f"{field} must be a list of strings")
+    for field in ("reason_code", "model_name", "prompt_version"):
+        if not result.get(field):
+            violations.append(f"{field} is required")
 
     tool_trace = result.get("tool_trace")
     if not isinstance(tool_trace, list) or not tool_trace:
@@ -110,8 +118,9 @@ def validate_result(result: dict[str, Any]) -> list[str]:
             violations.append("LLM must not run after the quality guardrail blocks a window")
         if attempts != 0:
             violations.append("a blocked window must have zero LLM attempts")
-        if result.get("tools_called") != ["check_quality"]:
-            violations.append("a blocked window may only call check_quality")
+        expected_tools = ["check_quality", "get_context"]
+        if result.get("tools_called") != expected_tools:
+            violations.append("a blocked window called tools outside its deterministic gate")
     elif not isinstance(structured.get("real_flight_context"), dict):
         violations.append("valid interpretation requires real_flight_context")
 

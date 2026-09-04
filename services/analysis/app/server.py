@@ -77,7 +77,11 @@ def create_server(settings: Settings) -> ThreadingHTTPServer:
     repository = CsvRepository(
         settings.window_features_csv, settings.synchronized_timeseries_csv
     )
-    engine = AnalysisEngine(repository, settings.fbg_validity_threshold)
+    engine = AnalysisEngine(
+        repository,
+        settings.fbg_validity_threshold,
+        settings.real_context_start_s,
+    )
     handler = type(
         "ConfiguredAnalysisHandler",
         (AnalysisRequestHandler,),

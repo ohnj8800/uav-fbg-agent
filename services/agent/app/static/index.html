@@ -44,7 +44,7 @@
 <body>
   <header>
     <h1>UAV / FBG Restricted Interpretation</h1>
-    <p>以 window_features.csv 與 VERIFIED_REAL_STATE context 進行受限制四分類判讀</p>
+    <p>以 window_features.csv 的預計算 FBG evidence 與 REAL_LOG context 進行受限制四分類判讀</p>
   </header>
   <main>
     <section class="panel">
@@ -69,13 +69,15 @@
           <canvas id="chart" width="900" height="330"></canvas>
         </section>
         <section class="panel">
-          <h2>Evidence</h2>
+          <h2>Structured evidence</h2>
           <ul id="evidence"></ul>
           <div class="grid" style="grid-template-columns:repeat(2,1fr);margin-top:16px">
             <div class="metric"><span>FBG validity</span><strong id="validity">—</strong></div>
             <div class="metric"><span>FBG RMS (nm)</span><strong id="rms">—</strong></div>
             <div class="metric"><span>Flight phase</span><strong id="phase">—</strong></div>
             <div class="metric"><span>Pitch / Roll mean</span><strong id="attitude">—</strong></div>
+            <div class="metric"><span>Context validity</span><strong id="contextValidity">—</strong></div>
+            <div class="metric"><span>Reason code</span><strong id="reasonCode">—</strong></div>
           </div>
         </section>
       </div>
@@ -138,13 +140,16 @@
           jsonFetch(`/v1/windows/${encodeURIComponent(id)}/visualization`)
         ]);
         $('result').classList.remove('hidden'); $('message').classList.add('hidden');
-        $('decision').textContent=result.constrained_decision; $('abstain').textContent=result.abstain ? `YES — ${result.abstain_reason}` : 'NO';
+        const abstained = result.abstained ?? result.abstain;
+        $('decision').textContent=result.constrained_decision; $('abstain').textContent=abstained ? `YES — ${result.abstain_reason}` : 'NO';
         $('source').textContent=result.context_source; $('backend').textContent=result.effective_backend;
-        $('decisionCard').classList.toggle('abstain',result.abstain);
-        $('evidence').innerHTML=''; (result.evidence||[]).forEach(item=>{const li=document.createElement('li');li.textContent=item;$('evidence').appendChild(li);});
+        $('decisionCard').classList.toggle('abstain',abstained);
+        $('evidence').innerHTML='';
+        [...(result.evidence_fbg||[]).map(item=>`FBG: ${item}`), ...(result.evidence_context||[]).map(item=>`Context: ${item}`)].forEach(item=>{const li=document.createElement('li');li.textContent=item;$('evidence').appendChild(li);});
         const ev=result.evidence_data||{}, fbg=ev.fbg||{}, flight=ev.flight_context||ev.real_flight_context||{};
         $('validity').textContent=fmt(fbg.validity_ratio); $('rms').textContent=fmt(fbg.rms_nm); $('phase').textContent=fmt(flight.flight_phase);
         $('attitude').textContent=`${fmt(flight.pitch_mean_deg)} / ${fmt(flight.roll_mean_deg)}`;
+        $('contextValidity').textContent=fmt(result.context_validity); $('reasonCode').textContent=fmt(result.reason_code);
         $('trace').innerHTML=''; (result.tool_trace||[]).forEach(row=>{const tr=document.createElement('tr');[row.step,row.requested_tool,row.executed_tool,row.reason_code,row.status].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});$('trace').appendChild(tr);});
         $('json').textContent=JSON.stringify(result,null,2); drawSeries(visual);
       } catch(error) { $('message').classList.remove('hidden'); $('message').textContent=`判讀失敗：${error.message}`; }

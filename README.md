@@ -8,8 +8,8 @@ It does not classify UAV anomalies or diagnose faults.
 
 ## Current scope
 
-- `analysis-service`: CSV parsing, window lookup, flight events, neighbor comparison,
-  FBG quality guardrail and deterministic evidence.
+- `analysis-service`: precomputed window lookup, deterministic FBG quality/context gates,
+  neighbor comparison and evidence. Raw synchronized rows are reference/plot data only.
 - `agent-service`: restricted tool planning, optional local Ollama backend, structured output,
   decision validation, browser interface and JSONL audit trail.
 - Mandatory preflight rule: when `fbg_validity_ratio < FBG_VALIDITY_THRESHOLD`, the request is
@@ -19,7 +19,7 @@ Allowed decisions:
 
 - `STATE_CONSISTENT`
 - `TRANSITION_ASSOCIATED`
-- `NOT_ATTRIBUTABLE_TO_FLIGHT_STATE`
+- `NOT_ATTRIBUTABLE`
 - `INSUFFICIENT_DATA`
 
 CUDA VMD and VMDNet are intentionally not part of this first vertical slice. They can later be
@@ -65,7 +65,12 @@ source .venv/bin/activate
 python -m unittest discover -s tests -v
 ```
 
-The current code uses only Python's standard library, so no `pip install` step is required.
+The two services use only Python's standard library. Install Matplotlib in the host virtual
+environment to create the Python-rendered paper figure:
+
+```powershell
+python -m pip install -r requirements-plot.txt
+```
 
 ## 2. Prepare the data
 
@@ -76,8 +81,14 @@ data/window_features.csv
 data/synchronized_timeseries.csv
 ```
 
-The files are excluded from Git and mounted read-only into `analysis-service`. They are never
-mounted into `agent-service`.
+`window_features.csv` is the only formal 2-s interpretation input. `synchronized_timeseries.csv`
+is used only to inspect waveforms/events and draw representative cases; it is never used to
+recompute a second feature set for the LLM. The files are excluded from Git and mounted read-only
+into `analysis-service`. They are never mounted into `agent-service`.
+
+`dt_context_dev.csv`, if present locally, is development/schema reference only. It is not merged
+with the window inputs and is not exposed as LLM context because closed-loop DT validation has not
+passed.
 
 ## 3. Run locally without Docker
 
@@ -174,11 +185,12 @@ Content-Type: application/json
 {"window_id":"W008"}
 ```
 
-The response includes `decision`, human-readable `evidence`, deterministic `evidence_data`,
-`constrained_decision`, `abstain`, `abstain_reason`, `context_source`, `tools_called`,
+The response includes `decision`, `evidence_fbg`, `evidence_context`, deterministic `evidence_data`,
+`constrained_decision`, `abstained`, `reason_code`, `context_source`, `context_validity`, `tools_called`,
 `tool_trace`, `reasoning_trace`, `guardrail_applied`, `planner_invoked`, `llm_invoked` and
 `request_id`. `planner_backend` and `planner_model` identify the configured interpretation
-backend. `evidence_data` directly exposes the FBG validity/STD/RMS/P2P and verified real-state
+backend. `model_name` and `prompt_version` make the configuration auditable. `evidence_data`
+directly exposes the FBG validity/STD/RMS/P2P and REAL_LOG
 flight phase/roll/pitch used for interpretation. Full observations are written to
 `runtime/audit.jsonl` for traceability. The reasoning trace contains concise, auditable rule and
 tool-selection reasons; it does not store private chain-of-thought.
@@ -242,12 +254,14 @@ This creates the following ignored local outputs under `results/deliverables/`:
 - `agent_trace.jsonl`: complete structured tool, rule, model and execution trace per window.
 - `llm_eval.csv`: contract, safety, abstention and trace-completeness evaluation. Without
   validated reference labels, this file does not claim classification accuracy.
-- `window_figures/W003_verified_real_state.svg`
-- `window_figures/W004_verified_real_state.svg`
-- `window_figures/W027_verified_real_state.svg`
+- `window_figures/W031_real_log.svg`
+- `window_figures/W008_real_log.svg`
+- `window_figures/W065_real_log.svg`
+- `figure_c_contextual_interpretation.png`: 300-dpi Matplotlib paper figure.
+- `figure_c_contextual_interpretation.svg`: vector Matplotlib paper figure.
 
 The current result stage is explicitly recorded as `DEVELOPMENT`, with
-`context_source=VERIFIED_REAL_STATE`. These are the deliverable results for the present project
+`context_source=REAL_LOG`. These are the deliverable results for the present project
 stage; they must not be represented as validated-DT results.
 
 ### Publication Figure c view
@@ -269,8 +283,8 @@ powershell -ExecutionPolicy Bypass -File scripts\capture_publication_view.ps1
 
 The image is written to
 `results/deliverables/figure_c_publication_dashboard.png`. The publication panel intentionally
-keeps only an enlarged FBG waveform, one verified flight-state context statement and one
-constrained decision for each of W003, W004 and W027. Detailed metrics, model execution fields
+keeps only an enlarged FBG waveform, one REAL_LOG context statement and one
+constrained decision for each representative case. Detailed metrics, model execution fields
 and complete traces remain available in the main interface and deliverable files rather than
 being crowded into the paper figure.
 
@@ -284,13 +298,20 @@ This writes `figure_c_window_examples.png` and `figure_c_flight_timeline.png` un
 `results/deliverables/`. The timeline alternative adds no new interpretation: it rearranges the
 same 90 saved outputs against their real window start/end times and flight-event markers.
 
+The preferred paper output is generated directly by Python/Matplotlib and does not require a
+browser screenshot:
+
+```powershell
+python scripts\generate_publication_figure.py
+```
+
 ## 10. Interpretation consistency evaluation
 
 Repeat representative interpretations and verify the fixed four-class contract, structured
 evidence and deterministic quality guardrail:
 
 ```powershell
-python scripts\evaluate_consistency.py --windows W003 W004 W027 --repeats 3
+python scripts\evaluate_consistency.py --windows W031 W008 W065 --repeats 3
 ```
 
 The evaluator reports per-window decision agreement, tool sequences and any contract violation.

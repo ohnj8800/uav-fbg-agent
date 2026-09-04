@@ -22,10 +22,15 @@ EVAL_FIELDS = (
     "window_id",
     "constrained_decision",
     "abstain",
+    "abstained",
+    "context_validity",
+    "reason_code",
     "decision_allowed",
     "evidence_present",
     "trace_complete",
     "guardrail_compliant",
+    "input_boundary_compliant",
+    "required_fields_present",
     "llm_execution_valid",
     "contract_valid",
     "evaluation_scope",
@@ -64,15 +69,33 @@ def _evaluation_row(result: dict[str, Any]) -> dict[str, object]:
         and result.get("llm_invoked") is False
         and attempts == 0
     )
+    required_fields = (
+        "window_id",
+        "context_source",
+        "context_validity",
+        "decision",
+        "abstained",
+        "evidence_fbg",
+        "evidence_context",
+        "reason_code",
+        "model_name",
+        "prompt_version",
+    )
     return {
         "window_id": result.get("window_id"),
         "constrained_decision": decision,
         "abstain": result.get("abstain"),
+        "abstained": result.get("abstained"),
+        "context_validity": result.get("context_validity"),
+        "reason_code": result.get("reason_code"),
         "decision_allowed": decision in ALLOWED_DECISIONS,
         "evidence_present": bool(result.get("evidence")),
         "trace_complete": bool(result.get("tool_trace"))
         and bool(result.get("reasoning_trace")),
         "guardrail_compliant": guardrail_compliant,
+        "input_boundary_compliant": result.get("context_source") == "REAL_LOG"
+        and "visualization" not in result.get("tools_called", []),
+        "required_fields_present": all(field in result for field in required_fields),
         "llm_execution_valid": llm_execution_valid,
         "contract_valid": not violations,
         "evaluation_scope": "CONTRACT_SAFETY_TRACE_NOT_ACCURACY",
@@ -177,7 +200,7 @@ def render_window_svg(
             '<rect x="285" y="700" width="14" height="4" fill="#f59e0b"/><text x="307" y="706" font-size="12">Roll</text>',
             '<rect x="380" y="700" width="14" height="4" fill="#a78bfa"/><text x="402" y="706" font-size="12">Armed</text>',
             '<rect x="485" y="700" width="14" height="4" fill="#fb7185"/><text x="507" y="706" font-size="12">Airborne</text>',
-            '<text x="55" y="735" font-size="11" class="muted">Development result using verified real-state context; not a UAV fault diagnosis.</text>',
+            '<text x="55" y="735" font-size="11" class="muted">REAL_LOG contextual interpretation; synchronized timeseries is shown for reference only.</text>',
             '</svg>',
         ]
     )
@@ -248,15 +271,31 @@ def generate_deliverables(
             raise RuntimeError(f"Figure window {normalized} was not analyzed")
         if normalized not in features:
             raise RuntimeError(f"Figure window {normalized} is absent from window_features.csv")
-        figure_path = figures_dir / f"{normalized}_verified_real_state.svg"
+        figure_path = figures_dir / f"{normalized}_real_log.svg"
         render_window_svg(
             results_by_id[normalized], features[normalized], timeseries, figure_path
         )
         figure_paths.append(str(figure_path))
 
+    try:
+        from scripts.generate_publication_figure import render_publication_figure
+    except ModuleNotFoundError:
+        from generate_publication_figure import render_publication_figure
+
+    publication_png = output_dir / "figure_c_contextual_interpretation.png"
+    publication_svg = output_dir / "figure_c_contextual_interpretation.svg"
+    render_publication_figure(
+        output_csv=output_csv,
+        window_features_csv=window_features_csv,
+        timeseries_csv=timeseries_csv,
+        representative_windows=figure_windows,
+        png_path=publication_png,
+        svg_path=publication_svg,
+    )
+
     return {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "context_source": "VERIFIED_REAL_STATE",
+        "context_source": "REAL_LOG",
         "result_stage": "DEVELOPMENT",
         "windows_completed": len(results),
         "contract_valid": sum(bool(row["contract_valid"]) for row in eval_rows),
@@ -266,6 +305,8 @@ def generate_deliverables(
             "agent_trace": str(trace_jsonl),
             "llm_eval": str(eval_csv),
             "window_figures": figure_paths,
+            "publication_figure_png": str(publication_png),
+            "publication_figure_svg": str(publication_svg),
         },
         "evaluation_note": (
             "llm_eval.csv evaluates contract, safety and trace completeness; "
@@ -287,7 +328,7 @@ def main() -> None:
         "--timeseries", type=Path, default=Path("data/synchronized_timeseries.csv")
     )
     parser.add_argument(
-        "--figure-windows", nargs=3, default=["W003", "W004", "W027"]
+        "--figure-windows", nargs=3, default=["W031", "W008", "W065"]
     )
     parser.add_argument("--windows", nargs="+")
     parser.add_argument("--limit", type=int)

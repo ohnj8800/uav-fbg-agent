@@ -40,7 +40,7 @@ def normalize_window_id(window_id: str | int) -> str:
 
 
 class CsvRepository:
-    """Read-only access to synchronized UAV/FBG data."""
+    """Read window inputs and keep raw synchronized rows for reference plots only."""
 
     def __init__(self, window_features_csv: Path, timeseries_csv: Path) -> None:
         self.window_features_csv = Path(window_features_csv)

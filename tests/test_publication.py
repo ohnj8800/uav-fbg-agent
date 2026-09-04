@@ -20,6 +20,7 @@ class PublicationResultsTest(unittest.TestCase):
                 "window_id",
                 "constrained_decision",
                 "abstain",
+                "abstained",
                 "llm_invoked",
                 "fallback_used",
                 "context_source",
@@ -28,29 +29,32 @@ class PublicationResultsTest(unittest.TestCase):
             output_rows = [
                 {
                     "window_id": "W003",
-                    "constrained_decision": "NOT_ATTRIBUTABLE_TO_FLIGHT_STATE",
+                    "constrained_decision": "NOT_ATTRIBUTABLE",
                     "abstain": False,
+                    "abstained": False,
                     "llm_invoked": True,
                     "fallback_used": False,
-                    "context_source": "VERIFIED_REAL_STATE",
+                    "context_source": "REAL_LOG",
                     "result_stage": "DEVELOPMENT",
                 },
                 {
                     "window_id": "W004",
                     "constrained_decision": "TRANSITION_ASSOCIATED",
                     "abstain": False,
+                    "abstained": False,
                     "llm_invoked": True,
                     "fallback_used": False,
-                    "context_source": "VERIFIED_REAL_STATE",
+                    "context_source": "REAL_LOG",
                     "result_stage": "DEVELOPMENT",
                 },
                 {
                     "window_id": "W027",
                     "constrained_decision": "INSUFFICIENT_DATA",
                     "abstain": True,
+                    "abstained": True,
                     "llm_invoked": False,
                     "fallback_used": False,
-                    "context_source": "VERIFIED_REAL_STATE",
+                    "context_source": "REAL_LOG",
                     "result_stage": "DEVELOPMENT",
                 },
             ]
@@ -82,7 +86,7 @@ class PublicationResultsTest(unittest.TestCase):
 
             payload = load_publication_results(root)
 
-            self.assertEqual(payload["context_source"], "VERIFIED_REAL_STATE")
+            self.assertEqual(payload["context_source"], "REAL_LOG")
             self.assertEqual(payload["result_stage"], "DEVELOPMENT")
             self.assertEqual(payload["planner_model"], "qwen3:8b")
             self.assertEqual(payload["summary"]["windows"], 3)

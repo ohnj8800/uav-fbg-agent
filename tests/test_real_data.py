@@ -22,13 +22,18 @@ class RealDataSmokeTest(unittest.TestCase):
         self.assertAlmostEqual(quality["fbg_validity_ratio"], 0.30)
         self.assertFalse(quality["sufficient"])
 
-    def test_w008_contains_flight_onset(self) -> None:
+    def test_w008_context_uses_window_level_state_statistics(self) -> None:
         context = self.engine.context("W008")
-        self.assertTrue(
-            any(event["event"] == "flight_onset" for event in context["events_in_window"])
-        )
+        self.assertEqual(context["context_source"], "REAL_LOG")
+        self.assertEqual(context["context_validity"], "VALID")
+        self.assertAlmostEqual(context["airborne_fraction"], 0.5)
+        self.assertNotIn("events_in_window", context)
+
+    def test_raw_flight_events_are_reference_only(self) -> None:
+        plot = self.engine.visualization("W008")
+        self.assertEqual(plot["context_source"], "REAL_LOG_REFERENCE_ONLY")
+        self.assertTrue(any(event["event"] == "flight_onset" for event in plot["events"]))
 
 
 if __name__ == "__main__":
     unittest.main()
-

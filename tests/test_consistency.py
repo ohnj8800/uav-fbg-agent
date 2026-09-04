@@ -10,14 +10,21 @@ def valid_result(decision: str = "STATE_CONSISTENT") -> dict[str, object]:
         "decision": decision,
         "constrained_decision": decision,
         "abstain": decision == "INSUFFICIENT_DATA",
+        "abstained": decision == "INSUFFICIENT_DATA",
         "abstain_reason": (
             "FBG_VALIDITY_BELOW_THRESHOLD"
             if decision == "INSUFFICIENT_DATA"
             else None
         ),
-        "context_source": "VERIFIED_REAL_STATE",
+        "context_source": "REAL_LOG",
+        "context_validity": "VALID",
         "result_stage": "DEVELOPMENT",
         "evidence": ["Supplied evidence supports the interpretation"],
+        "evidence_fbg": ["FBG quality passed"],
+        "evidence_context": ["REAL_LOG context is valid"],
+        "reason_code": "STATE_CONTEXT_CONSISTENT",
+        "model_name": "qwen3:8b",
+        "prompt_version": "uav_fbg_real_log_v1",
         "evidence_data": {
             "fbg": {
                 "validity_ratio": 1.0,
@@ -38,7 +45,7 @@ def valid_result(decision: str = "STATE_CONSISTENT") -> dict[str, object]:
         "fallback_used": False,
         "effective_backend": "ollama",
         "planner_warnings": [],
-        "tools_called": ["check_quality", "get_evidence"],
+        "tools_called": ["check_quality", "get_context", "get_evidence"],
         "tool_trace": [{"step": 1, "executed_tool": "check_quality"}],
         "reasoning_trace": [{"stage": "QUALITY_PREFLIGHT", "outcome": "PASS"}],
     }

@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from .planner import ALLOWED_DECISIONS, Planner
+from .planner import ALLOWED_DECISIONS, PROMPT_VERSION, Planner
 
 
-CONTEXT_SOURCE = "VERIFIED_REAL_STATE"
+CONTEXT_SOURCE = "REAL_LOG"
 RESULT_STAGE = "DEVELOPMENT"
 
 
@@ -60,6 +60,8 @@ class AgentOrchestrator:
             real_flight_context = {
                 "t_start_s": context.get("t_start_s"),
                 "t_end_s": context.get("t_end_s"),
+                "context_validity": context.get("context_validity"),
+                "reliable_overlap_start_s": context.get("reliable_overlap_start_s"),
                 "flight_phase": context.get("flight_phase"),
                 "mode_name": context.get("mode_name"),
                 "armed_fraction": context.get("armed_fraction"),
@@ -68,7 +70,9 @@ class AgentOrchestrator:
                 "roll_std_deg": attitude.get("roll_std_deg"),
                 "pitch_mean_deg": attitude.get("pitch_mean_deg"),
                 "pitch_std_deg": attitude.get("pitch_std_deg"),
-                "events_in_window": context.get("events_in_window", []),
+                "rates": context.get("rates", {}),
+                "control_error": context.get("control_error", {}),
+                "motor_output": context.get("motor_output", {}),
             }
 
         return {
@@ -118,8 +122,20 @@ class AgentOrchestrator:
             }
         ]
         planner_invoked = False
+        context = self.client.call_tool("get_context", window_id)
+        observations["get_context"] = context
+        tools_called.append("get_context")
+        planner_trace.append(
+            {
+                "requested": "get_context",
+                "executed": "get_context",
+                "reason": "mandatory-context-preflight",
+            }
+        )
+        quality_blocked = not quality.get("sufficient", False)
+        context_blocked = context.get("context_validity") == "INVALID"
 
-        if quality.get("sufficient", False):
+        if not quality_blocked and not context_blocked:
             for _ in range(self.max_steps):
                 planner_invoked = True
                 action = self.planner.next_action(window_id, observations, tools_called)
@@ -177,14 +193,22 @@ class AgentOrchestrator:
 
         canonical_window_id = str(quality.get("window_id", window_id))
 
-        guardrail_applied = not quality.get("sufficient", False)
-        if guardrail_applied:
+        guardrail_applied = quality_blocked or context_blocked
+        if quality_blocked:
             decision = "INSUFFICIENT_DATA"
             abstain_reason = "FBG_VALIDITY_BELOW_THRESHOLD"
             evidence = [
                 f"FBG validity is {quality.get('fbg_validity_ratio', 0.0):.2f}",
                 f"Required threshold is {quality.get('threshold', 0.0):.2f}",
                 "The deterministic safety rule blocked interpretation",
+            ]
+        elif context_blocked:
+            decision = "INSUFFICIENT_DATA"
+            abstain_reason = "REAL_LOG_CONTEXT_UNAVAILABLE"
+            evidence = [
+                f"FBG validity is {quality.get('fbg_validity_ratio', 0.0):.2f}",
+                "Reliable REAL_LOG overlap begins at approximately 7.1 s",
+                "The deterministic context rule blocked interpretation",
             ]
         else:
             abstain_reason = None
@@ -222,6 +246,41 @@ class AgentOrchestrator:
         if not planner_invoked:
             runtime["effective_backend"] = "not_invoked"
         abstain = decision == "INSUFFICIENT_DATA"
+        context_validity = context.get("context_validity", "UNKNOWN")
+        fbg_evidence = [
+            (
+                f"FBG validity {quality.get('fbg_validity_ratio', 0.0):.2f} "
+                f"{'passed' if quality.get('sufficient') else 'failed'} threshold "
+                f"{quality.get('threshold', 0.0):.2f}"
+            )
+        ]
+        metrics = quality.get("fbg_metrics", {})
+        fbg_evidence.append(
+            "FBG window metrics: "
+            f"STD={metrics.get('std_nm')}, RMS={metrics.get('rms_nm')}, "
+            f"P2P={metrics.get('p2p_nm')} nm"
+        )
+        context_evidence = [
+            f"REAL_LOG context validity is {context_validity}",
+            (
+                f"Flight phase={context.get('flight_phase')}, "
+                f"armed_fraction={context.get('armed_fraction')}, "
+                f"airborne_fraction={context.get('airborne_fraction')}"
+            ),
+        ]
+
+        reason_codes = {
+            "FBG_VALIDITY_BELOW_THRESHOLD": "FBG_VALIDITY_BELOW_THRESHOLD",
+            "REAL_LOG_CONTEXT_UNAVAILABLE": "REAL_LOG_CONTEXT_UNAVAILABLE",
+        }
+        if abstain_reason:
+            reason_code = reason_codes.get(abstain_reason, "INSUFFICIENT_EVIDENCE")
+        elif decision == "TRANSITION_ASSOCIATED":
+            reason_code = "REAL_LOG_TRANSITION_ASSOCIATED"
+        elif decision == "NOT_ATTRIBUTABLE":
+            reason_code = "FBG_VARIABILITY_NOT_ATTRIBUTABLE"
+        else:
+            reason_code = "STATE_CONTEXT_CONSISTENT"
         tool_trace = self._tool_trace(planner_trace)
         reasoning_trace = [
             {
@@ -229,7 +288,14 @@ class AgentOrchestrator:
                 "rule": "FBG_VALIDITY_THRESHOLD",
                 "actual": quality.get("fbg_validity_ratio"),
                 "threshold": quality.get("threshold"),
-                "outcome": "BLOCK" if guardrail_applied else "PASS",
+                "outcome": "BLOCK" if quality_blocked else "PASS",
+            },
+            {
+                "stage": "CONTEXT_PREFLIGHT",
+                "rule": "REAL_LOG_CONTEXT_AVAILABILITY",
+                "actual": context_validity,
+                "threshold": "PARTIAL_OR_VALID",
+                "outcome": "BLOCK" if context_blocked else "PASS",
             },
             *[
                 {
@@ -259,15 +325,22 @@ class AgentOrchestrator:
             "decision": decision,
             "constrained_decision": decision,
             "evidence": evidence,
+            "evidence_fbg": fbg_evidence,
+            "evidence_context": context_evidence,
             "evidence_data": self._structured_evidence(quality, observations),
             "abstain": abstain,
+            "abstained": abstain,
             "abstain_reason": abstain_reason,
+            "reason_code": reason_code,
             "context_source": CONTEXT_SOURCE,
+            "context_validity": context_validity,
             "result_stage": RESULT_STAGE,
             "tools_called": tools_called,
             "guardrail_applied": guardrail_applied,
             "planner_backend": self.planner.backend_name,
             "planner_model": self.planner.model_name,
+            "model_name": self.planner.model_name or self.planner.backend_name,
+            "prompt_version": PROMPT_VERSION,
             "planner_invoked": planner_invoked,
             "llm_invoked": runtime["llm_attempts"] > 0,
             "llm_attempts": runtime["llm_attempts"],

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-REPRESENTATIVE_WINDOWS = ("W003", "W004", "W027")
+REPRESENTATIVE_WINDOWS = ("W031", "W008", "W065")
 
 
 class PublicationResultsError(RuntimeError):
@@ -53,18 +53,21 @@ def load_publication_results(directory: Path) -> dict[str, Any]:
             if window_id:
                 traces[window_id] = item
 
-    selected: list[dict[str, Any]] = []
-    for window_id in REPRESENTATIVE_WINDOWS:
-        try:
-            selected.append(traces[window_id])
-        except KeyError as exc:
-            raise PublicationResultsError(
-                f"agent_trace.jsonl does not contain required {window_id}"
-            ) from exc
+    selected = [traces[window_id] for window_id in REPRESENTATIVE_WINDOWS if window_id in traces]
+    if len(selected) < 3:
+        selected_ids = {str(item.get("window_id", "")).upper() for item in selected}
+        selected.extend(
+            item
+            for window_id, item in traces.items()
+            if window_id not in selected_ids
+        )
+        selected = selected[:3]
+    if len(selected) < 3:
+        raise PublicationResultsError("agent_trace.jsonl must contain at least three windows")
 
-    decisions = Counter(str(row.get("constrained_decision")) for row in rows)
+    decisions = Counter(str(row.get("decision") or row.get("constrained_decision")) for row in rows)
     llm_invocations = sum(_csv_bool(row.get("llm_invoked")) for row in rows)
-    abstentions = sum(_csv_bool(row.get("abstain")) for row in rows)
+    abstentions = sum(_csv_bool(row.get("abstained", row.get("abstain"))) for row in rows)
     fallbacks = sum(_csv_bool(row.get("fallback_used")) for row in rows)
     valid_contracts = sum(
         str(row.get("contract_valid", "")).lower() == "true" for row in eval_rows
@@ -94,8 +97,8 @@ def load_publication_results(directory: Path) -> dict[str, Any]:
         "window_outputs": [
             {
                 "window_id": str(row.get("window_id", "")).upper(),
-                "constrained_decision": row.get("constrained_decision"),
-                "abstain": _csv_bool(row.get("abstain")),
+                "constrained_decision": row.get("decision") or row.get("constrained_decision"),
+                "abstain": _csv_bool(row.get("abstained", row.get("abstain"))),
                 "llm_invoked": _csv_bool(row.get("llm_invoked")),
                 "fallback_used": _csv_bool(row.get("fallback_used")),
             }

@@ -163,8 +163,10 @@ class PipelineTest(unittest.TestCase):
             writer.writeheader()
             writer.writerows(timeseries)
 
-        repository = CsvRepository(windows_path, timeseries_path)
-        self.engine = AnalysisEngine(repository, validity_threshold=0.80)
+        self.repository = CsvRepository(windows_path, timeseries_path)
+        self.engine = AnalysisEngine(
+            self.repository, validity_threshold=0.80, real_context_start_s=0.0
+        )
         self.audit_path = base / "audit.jsonl"
 
     def tearDown(self) -> None:
@@ -178,10 +180,32 @@ class PipelineTest(unittest.TestCase):
             "INSUFFICIENT_DATA",
         )
 
-    def test_flight_event_produces_transition_suggestion(self) -> None:
+    def test_window_level_state_statistics_produce_transition_suggestion(self) -> None:
         result = self.engine.evidence("W002")
         self.assertEqual(result["rule_suggestion"], "TRANSITION_ASSOCIATED")
-        self.assertEqual(result["flight_context"]["events_in_window"][0]["event"], "flight_onset")
+        self.assertNotIn("events_in_window", result["flight_context"])
+
+    def test_context_before_reliable_overlap_is_invalid(self) -> None:
+        engine = AnalysisEngine(
+            self.repository, validity_threshold=0.80, real_context_start_s=7.1
+        )
+        self.assertEqual(engine.context("W001")["context_validity"], "INVALID")
+
+    def test_invalid_real_log_context_blocks_llm(self) -> None:
+        engine = AnalysisEngine(
+            self.repository, validity_threshold=0.80, real_context_start_s=7.1
+        )
+        orchestrator = AgentOrchestrator(
+            client=InProcessClient(engine),
+            planner=FailIfInvokedPlanner(),
+            audit_log=AuditLog(self.audit_path),
+        )
+        result = orchestrator.analyze("W001")
+        self.assertEqual(result["decision"], "INSUFFICIENT_DATA")
+        self.assertEqual(result["reason_code"], "REAL_LOG_CONTEXT_UNAVAILABLE")
+        self.assertEqual(result["context_validity"], "INVALID")
+        self.assertTrue(result["abstained"])
+        self.assertFalse(result["llm_invoked"])
 
     def test_agent_enforces_guardrail_and_writes_audit_log(self) -> None:
         orchestrator = AgentOrchestrator(
@@ -196,10 +220,12 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(
             result["abstain_reason"], "FBG_VALIDITY_BELOW_THRESHOLD"
         )
-        self.assertEqual(result["context_source"], "VERIFIED_REAL_STATE")
+        self.assertEqual(result["context_source"], "REAL_LOG")
+        self.assertEqual(result["context_validity"], "VALID")
+        self.assertTrue(result["abstained"])
         self.assertEqual(result["result_stage"], "DEVELOPMENT")
         self.assertTrue(result["guardrail_applied"])
-        self.assertEqual(result["tools_called"], ["check_quality"])
+        self.assertEqual(result["tools_called"], ["check_quality", "get_context"])
         self.assertFalse(result["planner_invoked"])
         self.assertFalse(result["llm_invoked"])
         self.assertEqual(result["llm_attempts"], 0)
@@ -211,7 +237,7 @@ class PipelineTest(unittest.TestCase):
         )
         self.assertEqual(result["reasoning_trace"][0]["outcome"], "BLOCK")
         self.assertEqual(result["evidence_data"]["fbg"]["validity_ratio"], 0.30)
-        self.assertIsNone(result["evidence_data"]["real_flight_context"])
+        self.assertIsInstance(result["evidence_data"]["real_flight_context"], dict)
         self.assertTrue(self.audit_path.exists())
 
     def test_invalid_fbg_never_invokes_llm_planner(self) -> None:
@@ -232,9 +258,11 @@ class PipelineTest(unittest.TestCase):
             audit_log=AuditLog(self.audit_path),
         )
         result = orchestrator.analyze("W002")
-        self.assertEqual(result["tools_called"], ["check_quality", "get_evidence"])
         self.assertEqual(
-            result["planner_trace"][1],
+            result["tools_called"], ["check_quality", "get_context", "get_evidence"]
+        )
+        self.assertEqual(
+            result["planner_trace"][2],
             {
                 "requested": "finalize",
                 "executed": "get_evidence",
@@ -248,6 +276,9 @@ class PipelineTest(unittest.TestCase):
             "armed_ground",
         )
         self.assertEqual(result["evidence_data"]["fbg"]["rms_nm"], 0.06)
+        self.assertEqual(result["prompt_version"], "uav_fbg_real_log_v1")
+        self.assertTrue(result["evidence_fbg"])
+        self.assertTrue(result["evidence_context"])
 
     def test_agent_calls_multiple_tools_for_valid_window(self) -> None:
         orchestrator = AgentOrchestrator(

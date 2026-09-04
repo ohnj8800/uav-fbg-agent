@@ -10,6 +10,7 @@ class Settings:
     window_features_csv: Path
     synchronized_timeseries_csv: Path
     fbg_validity_threshold: float = 0.80
+    real_context_start_s: float = 7.1
     host: str = "0.0.0.0"
     port: int = 8001
 
@@ -28,7 +29,7 @@ class Settings:
             fbg_validity_threshold=float(
                 os.getenv("FBG_VALIDITY_THRESHOLD", "0.80")
             ),
+            real_context_start_s=float(os.getenv("REAL_CONTEXT_START_S", "7.1")),
             host=os.getenv("ANALYSIS_HOST", "0.0.0.0"),
             port=int(os.getenv("ANALYSIS_PORT", "8001")),
         )
-

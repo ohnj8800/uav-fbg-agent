@@ -7,6 +7,7 @@ services:
       WINDOW_FEATURES_CSV: /data/window_features.csv
       SYNCHRONIZED_TIMESERIES_CSV: /data/synchronized_timeseries.csv
       FBG_VALIDITY_THRESHOLD: ${FBG_VALIDITY_THRESHOLD:-0.80}
+      REAL_CONTEXT_START_S: ${REAL_CONTEXT_START_S:-7.1}
     volumes:
       - ./data:/data:ro
     expose:

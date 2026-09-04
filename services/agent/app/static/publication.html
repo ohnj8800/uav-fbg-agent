@@ -30,6 +30,8 @@
     .decision .label { color:#5d6670; font-size:9px; font-weight:700; letter-spacing:.1em; }
     .decision strong { font-size:14px; overflow-wrap:anywhere; }
     .decision small { color:#5d6670; font-size:11px; }
+    .consistent .context { border-color:#83a996; background:var(--green-bg); }
+    .consistent .decision { border-color:var(--green); background:var(--green-bg); }
     .transition .context { border-color:#dba363; background:var(--orange-bg); }
     .transition .decision { border-color:var(--orange); background:var(--orange-bg); }
     .insufficient .context { border-color:#d9959e; background:var(--red-bg); }
@@ -52,33 +54,33 @@
     <div class="panel-label">c</div>
     <header>
       <h1>Contextual interpretation examples</h1>
-      <div class="subtitle">FBG evidence + verified flight-state context → constrained decision</div>
+      <div class="subtitle">Precomputed FBG evidence + REAL_LOG context → constrained decision</div>
     </header>
     <div id="loading">Loading verified local results…</div>
     <div id="error"></div>
     <section id="content" hidden>
       <div id="cases" class="cases"></div>
       <footer>
-        <span>Development context: verified real state</span>
+        <span>Context source: REAL_LOG from window_features.csv</span>
         <span>Deterministic quality rule cannot be overridden by the LLM</span>
       </footer>
     </section>
   </main>
   <script>
     const caseNotes = {
-      W003: {
-        order:'Window I', className:'unattributed',
-        context:'Preflight · no flight-state transition',
-        evidence:'FBG differs from the same-phase baseline'
+      W031: {
+        order:'Window I', className:'consistent',
+        context:'Airborne · steady contextual example',
+        evidence:'FBG quality and REAL_LOG context are available'
       },
-      W004: {
+      W008: {
         order:'Window II', className:'transition',
-        context:'ARM transition at 7.071 s',
-        evidence:'FBG change occurs near a state transition'
+        context:'Flight onset transition window',
+        evidence:'Window-level flight-state statistics indicate transition'
       },
-      W027: {
+      W065: {
         order:'Window III', className:'insufficient',
-        context:'FBG validity 0.30 < 0.80 threshold',
+        context:'FBG validity 0.55 < 0.80 threshold',
         evidence:'Quality rule stops interpretation'
       }
     };
@@ -184,13 +186,13 @@
         );
         const container = document.getElementById('cases');
         results.forEach((result, index) => {
-          const note = caseNotes[result.window_id] || caseNotes.W003;
+          const note = caseNotes[result.window_id] || caseNotes.W031;
           const article = document.createElement('article');
           article.className = `case ${note.className}`;
           article.innerHTML = `
             <div class="case-head"><strong>${esc(note.order)}</strong><span>${esc(result.window_id)}</span></div>
             <canvas aria-label="FBG waveform for ${esc(result.window_id)}"></canvas>
-            <div class="context"><span class="label">Verified flight-state context</span>${esc(note.context)}<br>${esc(note.evidence)}</div>
+            <div class="context"><span class="label">REAL_LOG context</span>${esc(note.context)}<br>${esc(note.evidence)}</div>
             <div class="decision">
               <span class="label">FINAL OUTPUT</span>
               <strong>${esc(result.constrained_decision)}</strong>
