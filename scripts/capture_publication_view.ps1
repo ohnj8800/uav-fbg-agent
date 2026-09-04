@@ -1,6 +1,10 @@
 param(
     [string]$Url = "http://127.0.0.1:8000/paper",
-    [string]$Output = "results/deliverables/figure_c_publication_dashboard.png"
+    [string]$Output = "results/deliverables/figure_c_publication_dashboard.png",
+    [int]$ViewportWidth = 1800,
+    [int]$ViewportHeight = 650,
+    [ValidateRange(1, 4)]
+    [int]$Scale = 2
 )
 
 $browserCandidates = @(
@@ -32,8 +36,8 @@ $browserArguments = @(
     "--hide-scrollbars"
     "--no-first-run"
     "--no-default-browser-check"
-    "--window-size=1800,650"
-    "--force-device-scale-factor=1"
+    "--window-size=$ViewportWidth,$ViewportHeight"
+    "--force-device-scale-factor=$Scale"
     "--virtual-time-budget=5000"
     "--user-data-dir=$profileDirectory"
     "--screenshot=$absoluteOutput"

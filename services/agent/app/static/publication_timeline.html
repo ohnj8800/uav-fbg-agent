@@ -8,7 +8,7 @@
     :root { --ink:#17212c; --muted:#687582; --line:#d8dde3; --consistent:#16888d; --transition:#d97706; --unattributed:#586779; --insufficient:#d9dde2; --llm:#245fa8; --abstain:#aeb6c0; }
     * { box-sizing:border-box; }
     body { margin:0; background:#fff; color:var(--ink); font-family:Arial,"Noto Sans",sans-serif; }
-    .figure { width:min(1800px,100vw); min-height:650px; margin:auto; padding:23px 42px 18px; position:relative; background:#fff; }
+    .figure { width:min(1800px,100vw); min-height:580px; margin:auto; padding:23px 42px 14px; position:relative; background:#fff; }
     .panel-label { position:absolute; left:7px; top:0; font-size:38px; font-weight:800; color:#050505; }
     header { text-align:center; }
     h1 { margin:0 0 5px; font-size:29px; }
@@ -16,8 +16,8 @@
     .legend { display:flex; justify-content:center; flex-wrap:wrap; gap:19px; margin:15px 0 5px; color:#4e5965; font-size:12px; }
     .legend span { display:inline-flex; align-items:center; gap:6px; }
     .swatch { width:14px; height:10px; display:inline-block; }
-    canvas { width:100%; height:345px; display:block; }
-    .examples { display:grid; grid-template-columns:repeat(3,1fr); gap:26px; margin:5px 45px 0 115px; }
+    canvas { width:100%; height:320px; display:block; }
+    .examples { display:grid; grid-template-columns:repeat(3,1fr); gap:26px; margin:5px 25px 0 150px; }
     .example { border-left:4px solid var(--unattributed); padding:4px 10px; min-width:0; }
     .example.transition { border-color:var(--transition); }
     .example.insufficient { border-color:#b24a58; }
@@ -50,8 +50,9 @@
         <span><i class="swatch" style="background:var(--unattributed)"></i>Not attributable</span>
         <span><i class="swatch" style="background:var(--insufficient)"></i>Insufficient data</span>
         <span><i class="swatch" style="background:var(--llm)"></i>LLM invoked</span>
+        <span><i class="swatch" style="background:var(--abstain)"></i>Rule abstain / LLM bypassed</span>
       </div>
-      <canvas id="timeline" width="1700" height="345" aria-label="Constrained decisions and Agent actions across all flight windows"></canvas>
+      <canvas id="timeline" width="1700" height="320" aria-label="Constrained decisions and Agent actions across all flight windows"></canvas>
       <div class="examples">
         <div class="example"><strong>W003 · preflight</strong><span>No state transition → <code>NOT_ATTRIBUTABLE</code></span></div>
         <div class="example transition"><strong>W004 · ARM at 7.071 s</strong><span>State transition → <code>TRANSITION_ASSOCIATED</code></span></div>
@@ -83,7 +84,8 @@
       ctx.scale(ratio, ratio);
       const W = width / ratio, H = height / ratio;
       ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
-      const left=115, right=25, plotW=W-left-right;
+      // Leave enough room for the full lane labels at publication scale.
+      const left=150, right=25, plotW=W-left-right;
       const windowsById = new Map(timeline.windows.map(item => [item.window_id,item]));
       const outputs = publication.window_outputs
         .map(item => ({...item,...(windowsById.get(item.window_id)||{})}))
@@ -117,14 +119,14 @@
         ctx.fillText(eventLabels[event.event],px,labelY);
       });
 
-      const axisY=272;
+      const axisY=258;
       ctx.strokeStyle=colors.line; ctx.beginPath(); ctx.moveTo(left,axisY); ctx.lineTo(W-right,axisY); ctx.stroke();
       const firstTick=Math.ceil(start/30)*30;
       for(let value=firstTick;value<=end;value+=30){
         const px=x(value); ctx.beginPath();ctx.moveTo(px,axisY-4);ctx.lineTo(px,axisY+4);ctx.stroke();
-        ctx.fillStyle=colors.muted;ctx.textAlign='center';ctx.font='12px Arial';ctx.fillText(String(value),px,290);
+        ctx.fillStyle=colors.muted;ctx.textAlign='center';ctx.font='12px Arial';ctx.fillText(String(value),px,276);
       }
-      ctx.fillText('Time (s)',left+plotW/2,317);
+      ctx.fillText('Time (s)',left+plotW/2,302);
     }
     async function load() {
       try {
