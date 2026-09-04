@@ -14,7 +14,12 @@ from urllib.request import Request, urlopen
 
 CSV_FIELDS = (
     "window_id",
+    "constrained_decision",
     "decision",
+    "abstain",
+    "abstain_reason",
+    "context_source",
+    "result_stage",
     "fbg_validity_ratio",
     "fbg_std_nm",
     "fbg_rms_nm",
@@ -65,7 +70,7 @@ def request_json(
 def csv_row(result: dict[str, Any]) -> dict[str, object]:
     structured = result.get("evidence_data", {})
     fbg = structured.get("fbg") or {}
-    flight = structured.get("real_flight_context") or {}
+    flight = structured.get("flight_context") or structured.get("real_flight_context") or {}
     flight_events = []
     for event in flight.get("events_in_window", []):
         event_name = event.get("event", "unknown")
@@ -76,7 +81,12 @@ def csv_row(result: dict[str, Any]) -> dict[str, object]:
             flight_events.append(str(event_name))
     return {
         "window_id": result.get("window_id"),
+        "constrained_decision": result.get("constrained_decision", result.get("decision")),
         "decision": result.get("decision"),
+        "abstain": result.get("abstain"),
+        "abstain_reason": result.get("abstain_reason"),
+        "context_source": result.get("context_source"),
+        "result_stage": result.get("result_stage"),
         "fbg_validity_ratio": fbg.get("validity_ratio"),
         "fbg_std_nm": fbg.get("std_nm"),
         "fbg_rms_nm": fbg.get("rms_nm"),

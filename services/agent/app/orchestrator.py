@@ -10,6 +10,10 @@ from typing import Any, Protocol
 from .planner import ALLOWED_DECISIONS, Planner
 
 
+CONTEXT_SOURCE = "VERIFIED_REAL_STATE"
+RESULT_STAGE = "DEVELOPMENT"
+
+
 class ToolClient(Protocol):
     def call_tool(self, tool: str, window_id: str) -> dict[str, Any]: ...
 
@@ -81,8 +85,24 @@ class AgentOrchestrator:
                     "fbg_delta_p2p_nm", quality_metrics.get("p2p_nm")
                 ),
             },
+            "context_source": CONTEXT_SOURCE,
+            "flight_context": real_flight_context,
             "real_flight_context": real_flight_context,
         }
+
+    @staticmethod
+    def _tool_trace(planner_trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {
+                "step": index,
+                "requested_tool": item["requested"],
+                "executed_tool": item["executed"],
+                "reason_code": item["reason"].replace("-", "_").upper(),
+                "reason_summary": item.get("reason_summary"),
+                "status": "COMPLETED",
+            }
+            for index, item in enumerate(planner_trace, start=1)
+        ]
 
     def analyze(self, window_id: str) -> dict[str, Any]:
         self.planner.begin_request()
@@ -90,7 +110,7 @@ class AgentOrchestrator:
         quality = self.client.call_tool("check_quality", window_id)
         observations: dict[str, Any] = {"check_quality": quality}
         tools_called = ["check_quality"]
-        planner_trace: list[dict[str, str]] = [
+        planner_trace: list[dict[str, Any]] = [
             {
                 "requested": "check_quality",
                 "executed": "check_quality",
@@ -103,6 +123,7 @@ class AgentOrchestrator:
             for _ in range(self.max_steps):
                 planner_invoked = True
                 action = self.planner.next_action(window_id, observations, tools_called)
+                action_reason = self.planner.consume_action_reason()
 
                 if action == "finalize":
                     if "get_evidence" not in observations:
@@ -111,6 +132,7 @@ class AgentOrchestrator:
                                 "requested": "finalize",
                                 "executed": "get_evidence",
                                 "reason": "mandatory-evidence-before-finalize",
+                                "reason_summary": action_reason,
                             }
                         )
                         observations["get_evidence"] = self.client.call_tool(
@@ -127,7 +149,12 @@ class AgentOrchestrator:
                     raise RuntimeError(f"Planner produced unsupported action: {action}")
 
                 planner_trace.append(
-                    {"requested": action, "executed": action, "reason": "planner"}
+                    {
+                        "requested": action,
+                        "executed": action,
+                        "reason": "planner",
+                        "reason_summary": action_reason,
+                    }
                 )
 
                 # Avoid repeated calls when a model loops.
@@ -153,12 +180,14 @@ class AgentOrchestrator:
         guardrail_applied = not quality.get("sufficient", False)
         if guardrail_applied:
             decision = "INSUFFICIENT_DATA"
+            abstain_reason = "FBG_VALIDITY_BELOW_THRESHOLD"
             evidence = [
                 f"FBG validity is {quality.get('fbg_validity_ratio', 0.0):.2f}",
                 f"Required threshold is {quality.get('threshold', 0.0):.2f}",
                 "The deterministic safety rule blocked interpretation",
             ]
         else:
+            abstain_reason = None
             if "get_evidence" not in observations:
                 planner_trace.append(
                     {
@@ -185,18 +214,56 @@ class AgentOrchestrator:
             )
             if decision not in ALLOWED_DECISIONS:
                 raise RuntimeError(f"Invalid final decision: {decision!r}")
+            if decision == "INSUFFICIENT_DATA":
+                abstain_reason = "INSUFFICIENT_EVIDENCE"
 
         timestamp = datetime.now(timezone.utc).isoformat()
         runtime = self.planner.runtime_metadata()
         if not planner_invoked:
             runtime["effective_backend"] = "not_invoked"
+        abstain = decision == "INSUFFICIENT_DATA"
+        tool_trace = self._tool_trace(planner_trace)
+        reasoning_trace = [
+            {
+                "stage": "QUALITY_PREFLIGHT",
+                "rule": "FBG_VALIDITY_THRESHOLD",
+                "actual": quality.get("fbg_validity_ratio"),
+                "threshold": quality.get("threshold"),
+                "outcome": "BLOCK" if guardrail_applied else "PASS",
+            },
+            *[
+                {
+                    "stage": "TOOL_SELECTION",
+                    "requested_tool": item["requested"],
+                    "executed_tool": item["executed"],
+                    "reason_code": item["reason"].replace("-", "_").upper(),
+                    "reason_summary": item.get("reason_summary"),
+                }
+                for item in planner_trace
+            ],
+            {
+                "stage": "CONSTRAINED_DECISION",
+                "source": (
+                    "DETERMINISTIC_GUARDRAIL"
+                    if guardrail_applied
+                    else "RESTRICTED_PLANNER"
+                ),
+                "allowed_decisions": sorted(ALLOWED_DECISIONS),
+                "outcome": decision,
+            },
+        ]
         result = {
             "request_id": request_id,
             "timestamp_utc": timestamp,
             "window_id": canonical_window_id,
             "decision": decision,
+            "constrained_decision": decision,
             "evidence": evidence,
             "evidence_data": self._structured_evidence(quality, observations),
+            "abstain": abstain,
+            "abstain_reason": abstain_reason,
+            "context_source": CONTEXT_SOURCE,
+            "result_stage": RESULT_STAGE,
             "tools_called": tools_called,
             "guardrail_applied": guardrail_applied,
             "planner_backend": self.planner.backend_name,
@@ -210,6 +277,8 @@ class AgentOrchestrator:
             "effective_backend": runtime["effective_backend"],
             "planner_warnings": runtime["warnings"],
             "planner_trace": planner_trace,
+            "tool_trace": tool_trace,
+            "reasoning_trace": reasoning_trace,
         }
         self.audit_log.append({**result, "observations": observations})
         return result

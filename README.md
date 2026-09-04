@@ -11,7 +11,7 @@ It does not classify UAV anomalies or diagnose faults.
 - `analysis-service`: CSV parsing, window lookup, flight events, neighbor comparison,
   FBG quality guardrail and deterministic evidence.
 - `agent-service`: restricted tool planning, optional local Ollama backend, structured output,
-  decision validation and JSONL audit trail.
+  decision validation, browser interface and JSONL audit trail.
 - Mandatory preflight rule: when `fbg_validity_ratio < FBG_VALIDITY_THRESHOLD`, the request is
   stopped before the planner/LLM is called and the decision is always `INSUFFICIENT_DATA`.
 
@@ -175,11 +175,13 @@ Content-Type: application/json
 ```
 
 The response includes `decision`, human-readable `evidence`, deterministic `evidence_data`,
-`tools_called`, `planner_trace`, `guardrail_applied`, `planner_invoked`, `llm_invoked` and
+`constrained_decision`, `abstain`, `abstain_reason`, `context_source`, `tools_called`,
+`tool_trace`, `reasoning_trace`, `guardrail_applied`, `planner_invoked`, `llm_invoked` and
 `request_id`. `planner_backend` and `planner_model` identify the configured interpretation
-backend. `evidence_data` directly exposes the FBG validity/STD/RMS/P2P and real flight
-phase/roll/pitch used for interpretation. Full observations are written to `runtime/audit.jsonl`
-for traceability.
+backend. `evidence_data` directly exposes the FBG validity/STD/RMS/P2P and verified real-state
+flight phase/roll/pitch used for interpretation. Full observations are written to
+`runtime/audit.jsonl` for traceability. The reasoning trace contains concise, auditable rule and
+tool-selection reasons; it does not store private chain-of-thought.
 
 List the windows available through the restricted service boundary:
 
@@ -189,7 +191,20 @@ GET /v1/windows
 
 The endpoint returns IDs only. It does not expose the CSV path or raw rows to the Agent container.
 
-## 7. Batch analysis
+## 7. Web interface
+
+After starting the Docker services, open:
+
+```text
+http://127.0.0.1:8000/
+```
+
+The interface shows service/model readiness, lets the user select and analyze one window, plots
+the bounded window series, and displays the constrained decision, abstention status, evidence,
+tool/reasoning trace and structured JSON. The UI calls only `agent-service`; it never mounts or
+opens the CSV files directly.
+
+## 8. Batch analysis
 
 Start with a short Ollama run to confirm latency and outputs:
 
@@ -212,7 +227,30 @@ Each run creates three ignored local files under `results/`:
 Windows rejected by the quality preflight do not invoke Ollama. For a fast deterministic baseline,
 set `LLM_MODE=heuristic` in `.env` and recreate `agent-service` before running the batch.
 
-## 8. Interpretation consistency evaluation
+## 9. Lab deliverables
+
+Generate the exact files requested by the lab and three representative real-window figures:
+
+```powershell
+python scripts\generate_deliverables.py
+```
+
+This creates the following ignored local outputs under `results/deliverables/`:
+
+- `llm_window_outputs.csv`: one constrained decision, evidence set and abstention status per
+  window.
+- `agent_trace.jsonl`: complete structured tool, rule, model and execution trace per window.
+- `llm_eval.csv`: contract, safety, abstention and trace-completeness evaluation. Without
+  validated reference labels, this file does not claim classification accuracy.
+- `window_figures/W003_verified_real_state.svg`
+- `window_figures/W004_verified_real_state.svg`
+- `window_figures/W027_verified_real_state.svg`
+
+The current result stage is explicitly recorded as `DEVELOPMENT`, with
+`context_source=VERIFIED_REAL_STATE`. These are the deliverable results for the present project
+stage; they must not be represented as validated-DT results.
+
+## 10. Interpretation consistency evaluation
 
 Repeat representative interpretations and verify the fixed four-class contract, structured
 evidence and deterministic quality guardrail:
@@ -225,7 +263,7 @@ The evaluator reports per-window decision agreement, tool sequences and any cont
 This measures interpretation stability and rule compliance; it is not anomaly-detection accuracy.
 Its CSV, JSONL and summary JSON outputs are written under the ignored `results/` directory.
 
-## 9. Git workflow
+## 11. Git workflow
 
 ```bash
 git status

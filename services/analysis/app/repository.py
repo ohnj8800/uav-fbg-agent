@@ -103,6 +103,16 @@ class CsvRepository:
             if event["t_s"] is not None and start_s <= event["t_s"] < end_s
         ]
 
+    def timeseries_for_interval(
+        self, start_s: float, end_s: float
+    ) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        for row in self.timeseries:
+            timestamp = _number(row.get("t_from_fbg_start_s"))
+            if timestamp is not None and start_s <= timestamp < end_s:
+                rows.append(row)
+        return rows
+
     def phase_baseline(
         self, phase: str, metric: str, validity_threshold: float
     ) -> dict[str, float | int | None]:

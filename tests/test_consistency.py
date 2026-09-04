@@ -8,6 +8,15 @@ from scripts.evaluate_consistency import summarize_window, validate_result
 def valid_result(decision: str = "STATE_CONSISTENT") -> dict[str, object]:
     return {
         "decision": decision,
+        "constrained_decision": decision,
+        "abstain": decision == "INSUFFICIENT_DATA",
+        "abstain_reason": (
+            "FBG_VALIDITY_BELOW_THRESHOLD"
+            if decision == "INSUFFICIENT_DATA"
+            else None
+        ),
+        "context_source": "VERIFIED_REAL_STATE",
+        "result_stage": "DEVELOPMENT",
         "evidence": ["Supplied evidence supports the interpretation"],
         "evidence_data": {
             "fbg": {
@@ -30,6 +39,8 @@ def valid_result(decision: str = "STATE_CONSISTENT") -> dict[str, object]:
         "effective_backend": "ollama",
         "planner_warnings": [],
         "tools_called": ["check_quality", "get_evidence"],
+        "tool_trace": [{"step": 1, "executed_tool": "check_quality"}],
+        "reasoning_trace": [{"stage": "QUALITY_PREFLIGHT", "outcome": "PASS"}],
     }
 
 

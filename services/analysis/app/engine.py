@@ -68,6 +68,32 @@ class AnalysisEngine:
             },
         }
 
+    def visualization(self, window_id: str | int) -> dict[str, Any]:
+        """Return a bounded, display-only series; it is not an LLM tool."""
+        row = self.repository.get_window(window_id)
+        start_s = number(row.get("t_start_s")) or 0.0
+        end_s = number(row.get("t_end_s")) or start_s
+        samples = self.repository.timeseries_for_interval(start_s, end_s)
+        return {
+            "window_id": normalize_window_id(window_id),
+            "t_start_s": start_s,
+            "t_end_s": end_s,
+            "context_source": "VERIFIED_REAL_STATE",
+            "samples": [
+                {
+                    "t_s": number(sample.get("t_from_fbg_start_s")),
+                    "fbg_delta_nm": number(sample.get("fbg_delta_lambda_nm")),
+                    "fbg_valid": bool(number(sample.get("fbg_valid")) or 0.0),
+                    "pitch_deg": number(sample.get("pitch_deg")),
+                    "roll_deg": number(sample.get("roll_deg")),
+                    "armed": bool(number(sample.get("armed")) or 0.0),
+                    "airborne": bool(number(sample.get("is_airborne")) or 0.0),
+                }
+                for sample in samples[:500]
+            ],
+            "events": self.repository.events_for_interval(start_s, end_s),
+        }
+
     @staticmethod
     def _window_summary(row: dict[str, str]) -> dict[str, Any]:
         return {

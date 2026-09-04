@@ -42,9 +42,26 @@ def request_json(
 
 def validate_result(result: dict[str, Any]) -> list[str]:
     violations: list[str] = []
-    decision = result.get("decision")
+    decision = result.get("constrained_decision", result.get("decision"))
     if decision not in ALLOWED_DECISIONS:
         violations.append(f"decision is not allowed: {decision!r}")
+    if result.get("decision") != decision:
+        violations.append("decision and constrained_decision must match")
+
+    abstain = result.get("abstain")
+    if not isinstance(abstain, bool):
+        violations.append("abstain must be a boolean")
+    elif abstain != (decision == "INSUFFICIENT_DATA"):
+        violations.append("abstain must match INSUFFICIENT_DATA decision")
+    if abstain and not result.get("abstain_reason"):
+        violations.append("an abstained result must include abstain_reason")
+    if result.get("context_source") not in {
+        "VERIFIED_REAL_STATE",
+        "VALIDATED_DT_CONTEXT",
+    }:
+        violations.append("context_source is not recognized")
+    if result.get("result_stage") not in {"DEVELOPMENT", "FORMAL"}:
+        violations.append("result_stage is not recognized")
 
     planner_backend = result.get("planner_backend")
     if planner_backend not in {"heuristic", "ollama"}:
@@ -66,6 +83,13 @@ def validate_result(result: dict[str, Any]) -> list[str]:
         isinstance(item, str) for item in evidence
     ):
         violations.append("evidence must be a list of strings")
+
+    tool_trace = result.get("tool_trace")
+    if not isinstance(tool_trace, list) or not tool_trace:
+        violations.append("tool_trace must be a non-empty list")
+    reasoning_trace = result.get("reasoning_trace")
+    if not isinstance(reasoning_trace, list) or not reasoning_trace:
+        violations.append("reasoning_trace must be a non-empty list")
 
     structured = result.get("evidence_data")
     if not isinstance(structured, dict):

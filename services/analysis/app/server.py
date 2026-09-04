@@ -54,6 +54,8 @@ class AnalysisRequestHandler(BaseHTTPRequestHandler):
                     result = self.engine.neighbors(window_id, radius)
                 elif action == "evidence":
                     result = self.engine.evidence(window_id)
+                elif action == "visualization":
+                    result = self.engine.visualization(window_id)
                 else:
                     self._json(404, {"error": f"Unknown action: {action}"})
                     return

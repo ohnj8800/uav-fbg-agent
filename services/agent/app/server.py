@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from .analysis_client import AnalysisClient, AnalysisServiceError
 from .config import Settings
@@ -24,8 +26,21 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _html(self, status: int, body: bytes) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/health":
+        parsed = urlparse(self.path)
+        parts = [unquote(part) for part in parsed.path.strip("/").split("/") if part]
+        if parsed.path in {"/", "/app"}:
+            page = Path(__file__).with_name("static") / "index.html"
+            self._html(200, page.read_bytes())
+            return
+        if parsed.path == "/health":
             try:
                 dependency = self.analysis_client.health()
                 planner = self.orchestrator.planner.health()
@@ -41,9 +56,19 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             except AnalysisServiceError as exc:
                 self._json(503, {"status": "degraded", "error": str(exc)})
             return
-        if self.path == "/v1/windows":
+        if parsed.path == "/v1/windows":
             try:
                 self._json(200, self.analysis_client.list_windows())
+            except AnalysisServiceError as exc:
+                self._json(502, {"error": str(exc)})
+            return
+        if (
+            len(parts) == 4
+            and parts[:2] == ["v1", "windows"]
+            and parts[3] == "visualization"
+        ):
+            try:
+                self._json(200, self.analysis_client.visualization(parts[2]))
             except AnalysisServiceError as exc:
                 self._json(502, {"error": str(exc)})
             return

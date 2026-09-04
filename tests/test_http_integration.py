@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 from scripts.analyze_batch import run_batch
+from scripts.generate_deliverables import generate_deliverables
 from services.agent.app.config import Settings as AgentSettings
 from services.agent.app.server import create_server as create_agent_server
 from services.analysis.app.config import Settings as AnalysisSettings
@@ -127,6 +128,19 @@ class HttpIntegrationTest(unittest.TestCase):
         self.assertIn("W008", result["window_ids"])
         self.assertIn("W027", result["window_ids"])
 
+    def test_web_interface_and_visualization_are_available(self) -> None:
+        with urlopen(f"http://127.0.0.1:{self.agent_port}/", timeout=5) as response:
+            html = response.read().decode("utf-8")
+        self.assertIn("UAV / FBG Restricted Interpretation", html)
+        with urlopen(
+            f"http://127.0.0.1:{self.agent_port}/v1/windows/W004/visualization",
+            timeout=5,
+        ) as response:
+            plot = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(plot["window_id"], "W004")
+        self.assertEqual(plot["context_source"], "VERIFIED_REAL_STATE")
+        self.assertGreater(len(plot["samples"]), 0)
+
     def test_batch_client_writes_csv_jsonl_and_summary(self) -> None:
         output_dir = Path(self.temp_dir.name) / "batch-test"
         summary = run_batch(
@@ -138,6 +152,27 @@ class HttpIntegrationTest(unittest.TestCase):
         self.assertEqual(sum(summary["decision_counts"].values()), 2)
         for output_path in summary["outputs"].values():
             self.assertTrue(Path(output_path).exists())
+
+    def test_requested_deliverables_and_three_figures_are_created(self) -> None:
+        base = Path(__file__).resolve().parents[1]
+        output_dir = Path(self.temp_dir.name) / "deliverables-test"
+        summary = generate_deliverables(
+            f"http://127.0.0.1:{self.agent_port}",
+            output_dir,
+            base / "data" / "window_features.csv",
+            base / "data" / "synchronized_timeseries.csv",
+            ["W003", "W004", "W027"],
+            selected_windows=["W003", "W004", "W027"],
+            timeout_s=5,
+        )
+        self.assertEqual(summary["windows_completed"], 3)
+        self.assertEqual(summary["contract_valid"], 3)
+        self.assertTrue((output_dir / "llm_window_outputs.csv").exists())
+        self.assertTrue((output_dir / "agent_trace.jsonl").exists())
+        self.assertTrue((output_dir / "llm_eval.csv").exists())
+        self.assertEqual(len(summary["outputs"]["window_figures"]), 3)
+        for figure in summary["outputs"]["window_figures"]:
+            self.assertIn("<svg", Path(figure).read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

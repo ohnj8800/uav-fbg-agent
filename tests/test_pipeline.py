@@ -191,6 +191,13 @@ class PipelineTest(unittest.TestCase):
         )
         result = orchestrator.analyze("W003")
         self.assertEqual(result["decision"], "INSUFFICIENT_DATA")
+        self.assertEqual(result["constrained_decision"], "INSUFFICIENT_DATA")
+        self.assertTrue(result["abstain"])
+        self.assertEqual(
+            result["abstain_reason"], "FBG_VALIDITY_BELOW_THRESHOLD"
+        )
+        self.assertEqual(result["context_source"], "VERIFIED_REAL_STATE")
+        self.assertEqual(result["result_stage"], "DEVELOPMENT")
         self.assertTrue(result["guardrail_applied"])
         self.assertEqual(result["tools_called"], ["check_quality"])
         self.assertFalse(result["planner_invoked"])
@@ -199,6 +206,10 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(result["effective_backend"], "not_invoked")
         self.assertFalse(result["fallback_used"])
         self.assertEqual(result["planner_trace"][0]["reason"], "mandatory-preflight")
+        self.assertEqual(
+            result["tool_trace"][0]["reason_code"], "MANDATORY_PREFLIGHT"
+        )
+        self.assertEqual(result["reasoning_trace"][0]["outcome"], "BLOCK")
         self.assertEqual(result["evidence_data"]["fbg"]["validity_ratio"], 0.30)
         self.assertIsNone(result["evidence_data"]["real_flight_context"])
         self.assertTrue(self.audit_path.exists())
@@ -228,6 +239,7 @@ class PipelineTest(unittest.TestCase):
                 "requested": "finalize",
                 "executed": "get_evidence",
                 "reason": "mandatory-evidence-before-finalize",
+                "reason_summary": None,
             },
         )
         self.assertEqual(result["planner_trace"][-1]["reason"], "evidence-complete")
@@ -245,6 +257,8 @@ class PipelineTest(unittest.TestCase):
         )
         result = orchestrator.analyze("W002")
         self.assertEqual(result["decision"], "TRANSITION_ASSOCIATED")
+        self.assertFalse(result["abstain"])
+        self.assertIsNone(result["abstain_reason"])
         self.assertIn("get_context", result["tools_called"])
         self.assertIn("compare_neighbors", result["tools_called"])
         self.assertIn("get_evidence", result["tools_called"])

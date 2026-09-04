@@ -48,6 +48,10 @@ class Planner(ABC):
             "warnings": [],
         }
 
+    def consume_action_reason(self) -> str | None:
+        """Return a concise model-supplied action rationale, never hidden chain-of-thought."""
+        return None
+
     @abstractmethod
     def next_action(
         self, window_id: str, observations: dict[str, Any], tools_called: list[str]
@@ -112,6 +116,7 @@ class OllamaPlanner(Planner):
             "attempts": 0,
             "successes": 0,
             "warnings": [],
+            "action_reason": None,
         }
 
     def _runtime_state(self) -> dict[str, Any]:
@@ -129,6 +134,12 @@ class OllamaPlanner(Planner):
 
     def _record_failure(self, warning: str) -> None:
         self._runtime_state()["warnings"].append(warning)
+
+    def consume_action_reason(self) -> str | None:
+        state = self._runtime_state()
+        reason = state.get("action_reason")
+        state["action_reason"] = None
+        return str(reason) if reason else None
 
     def runtime_metadata(self) -> dict[str, Any]:
         state = self._runtime_state()
@@ -222,10 +233,15 @@ class OllamaPlanner(Planner):
             action = str(result.get("action", "")).strip()
             if action not in ALLOWED_ACTIONS:
                 raise ValueError(f"LLM selected disallowed action: {action!r}")
+            reason = str(result.get("reason", "")).strip()
+            self._runtime_state()["action_reason"] = reason[:300] or None
             self._record_success()
             return action
         except (URLError, TimeoutError, KeyError, ValueError, json.JSONDecodeError) as exc:
             self._record_failure(f"Ollama planner fallback: {exc}")
+            self._runtime_state()["action_reason"] = (
+                "Ollama action selection failed; deterministic fallback was used"
+            )
             return self.fallback.next_action(window_id, observations, tools_called)
 
     def finalize(

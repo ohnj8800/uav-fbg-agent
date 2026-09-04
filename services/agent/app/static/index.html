@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UAV / FBG Restricted Interpretation</title>
+  <style>
+    :root { color-scheme: dark; --bg:#07111f; --panel:#101d2f; --line:#263b55; --text:#e7eef8; --muted:#98abc2; --blue:#56a8ff; --cyan:#5eead4; --amber:#fbbf24; --red:#fb7185; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Inter,system-ui,"Noto Sans TC",sans-serif; background:linear-gradient(145deg,#07111f,#0b1728 55%,#08111d); color:var(--text); min-height:100vh; }
+    header { padding:24px 30px 18px; border-bottom:1px solid var(--line); background:#081422dd; position:sticky; top:0; z-index:2; backdrop-filter:blur(12px); }
+    h1 { margin:0; font-size:22px; letter-spacing:.02em; }
+    header p { margin:6px 0 0; color:var(--muted); font-size:13px; }
+    main { max-width:1280px; margin:auto; padding:24px; display:grid; gap:18px; }
+    .panel { background:linear-gradient(180deg,#122136,#0e1a2b); border:1px solid var(--line); border-radius:15px; padding:18px; box-shadow:0 14px 40px #0004; }
+    .controls { display:grid; grid-template-columns:minmax(180px,1fr) auto auto; gap:12px; align-items:end; }
+    label { display:block; color:var(--muted); font-size:12px; margin-bottom:7px; }
+    select,button { width:100%; border:1px solid #34506f; border-radius:9px; padding:11px 13px; background:#0a1728; color:var(--text); font-size:14px; }
+    button { cursor:pointer; width:auto; min-width:130px; background:linear-gradient(135deg,#1676d2,#2353c7); border:0; font-weight:700; }
+    button.secondary { background:#15263c; border:1px solid #34506f; }
+    button:disabled { opacity:.5; cursor:wait; }
+    .status { display:flex; gap:9px; flex-wrap:wrap; margin-bottom:14px; }
+    .chip { padding:6px 9px; border-radius:999px; background:#182a41; border:1px solid #2d4663; font-size:12px; }
+    .chip.ok { color:var(--cyan); } .chip.bad { color:var(--red); }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+    .metric { padding:13px; border-radius:11px; background:#0a1728; border:1px solid #223751; min-height:76px; }
+    .metric span { display:block; color:var(--muted); font-size:11px; margin-bottom:8px; }
+    .metric strong { font-size:17px; overflow-wrap:anywhere; }
+    .decision { border-left:5px solid var(--blue); }
+    .decision.abstain { border-left-color:var(--red); }
+    .two { display:grid; grid-template-columns:1.2fr .8fr; gap:18px; }
+    h2 { font-size:15px; margin:0 0 14px; }
+    ul { margin:0; padding-left:20px; } li { margin:7px 0; color:#d7e2f0; }
+    canvas { width:100%; height:270px; display:block; border-radius:10px; background:#091525; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th,td { text-align:left; padding:9px; border-bottom:1px solid #233850; vertical-align:top; }
+    th { color:var(--muted); font-weight:600; }
+    pre { margin:0; max-height:330px; overflow:auto; padding:13px; border-radius:10px; background:#07111e; color:#c7d6e8; font-size:11px; white-space:pre-wrap; }
+    .empty { color:var(--muted); padding:22px 0; text-align:center; }
+    .hidden { display:none; }
+    @media (max-width:850px) { .grid{grid-template-columns:repeat(2,1fr)} .two{grid-template-columns:1fr} .controls{grid-template-columns:1fr} button{width:100%} }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>UAV / FBG Restricted Interpretation</h1>
+    <p>以 window_features.csv 與 VERIFIED_REAL_STATE context 進行受限制四分類判讀</p>
+  </header>
+  <main>
+    <section class="panel">
+      <div id="health" class="status"><span class="chip">正在檢查服務…</span></div>
+      <div class="controls">
+        <div><label for="window">Window</label><select id="window"><option>載入中…</option></select></div>
+        <button id="analyze">開始判讀</button>
+        <button id="refresh" class="secondary">重新整理</button>
+      </div>
+    </section>
+
+    <section id="result" class="hidden">
+      <div class="grid">
+        <div id="decisionCard" class="metric decision"><span>Constrained decision</span><strong id="decision">—</strong></div>
+        <div class="metric"><span>Abstain</span><strong id="abstain">—</strong></div>
+        <div class="metric"><span>Context source</span><strong id="source">—</strong></div>
+        <div class="metric"><span>LLM backend</span><strong id="backend">—</strong></div>
+      </div>
+      <div class="two" style="margin-top:18px">
+        <section class="panel">
+          <h2>Window 時序圖</h2>
+          <canvas id="chart" width="900" height="330"></canvas>
+        </section>
+        <section class="panel">
+          <h2>Evidence</h2>
+          <ul id="evidence"></ul>
+          <div class="grid" style="grid-template-columns:repeat(2,1fr);margin-top:16px">
+            <div class="metric"><span>FBG validity</span><strong id="validity">—</strong></div>
+            <div class="metric"><span>FBG RMS (nm)</span><strong id="rms">—</strong></div>
+            <div class="metric"><span>Flight phase</span><strong id="phase">—</strong></div>
+            <div class="metric"><span>Pitch / Roll mean</span><strong id="attitude">—</strong></div>
+          </div>
+        </section>
+      </div>
+      <section class="panel" style="margin-top:18px">
+        <h2>Tool / reasoning trace</h2>
+        <table><thead><tr><th>Step</th><th>Requested</th><th>Executed</th><th>Reason code</th><th>Status</th></tr></thead><tbody id="trace"></tbody></table>
+      </section>
+      <section class="panel" style="margin-top:18px">
+        <h2>Structured JSON</h2><pre id="json"></pre>
+      </section>
+    </section>
+    <div id="message" class="panel empty">選擇一個 window 後開始判讀。</div>
+  </main>
+  <script>
+    const $ = id => document.getElementById(id);
+    const fmt = value => value === null || value === undefined ? "—" : (typeof value === "number" ? Number(value).toFixed(4).replace(/0+$/,"").replace(/\.$/,"") : String(value));
+    async function jsonFetch(url, options) {
+      const response = await fetch(url, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      return data;
+    }
+    async function load() {
+      try {
+        const [health, windows] = await Promise.all([jsonFetch('/health'), jsonFetch('/v1/windows')]);
+        $('health').innerHTML = '';
+        const chips = [
+          [`Agent: ${health.status}`, health.status === 'ok'],
+          [`Analysis: ${health.analysis_service}`, health.analysis_service === 'ok'],
+          [`Planner: ${health.planner.backend}`, health.planner.ready]
+        ];
+        chips.forEach(([text,ok]) => { const el=document.createElement('span'); el.className=`chip ${ok?'ok':'bad'}`; el.textContent=text; $('health').appendChild(el); });
+        $('window').innerHTML = windows.window_ids.map(id => `<option value="${id}">${id}</option>`).join('');
+      } catch (error) { $('health').innerHTML=`<span class="chip bad">服務錯誤：${error.message}</span>`; }
+    }
+    function drawSeries(payload) {
+      const canvas=$('chart'), ctx=canvas.getContext('2d'), rows=payload.samples || [];
+      ctx.clearRect(0,0,canvas.width,canvas.height); ctx.fillStyle='#091525'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      if (!rows.length) { ctx.fillStyle='#98abc2'; ctx.fillText('沒有可顯示的時序資料',30,40); return; }
+      const pad={l:105,r:20,t:16,b:26}, w=canvas.width-pad.l-pad.r;
+      const series=[['fbg_delta_nm','#5eead4','FBG Δλ'],['pitch_deg','#56a8ff','Pitch'],['roll_deg','#fbbf24','Roll'],['airborne','#fb7185','Airborne']];
+      const band=(canvas.height-pad.t-pad.b)/series.length, xs=i=>pad.l+w*i/Math.max(rows.length-1,1);
+      ctx.font='11px system-ui';
+      series.forEach(([key,color,label],track)=>{
+        const vals=rows.map(r=>key==='airborne'?(r.airborne?1:0):r[key]).filter(Number.isFinite);
+        let min=Math.min(...vals),max=Math.max(...vals);if(min===max){min-=.5;max+=.5}
+        const top=pad.t+track*band, ys=v=>top+band-10-(v-min)/(max-min)*(band-20);
+        ctx.strokeStyle='#243a54';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad.l,top+band-5);ctx.lineTo(pad.l+w,top+band-5);ctx.stroke();
+        ctx.fillStyle=color;ctx.fillText(label,10,top+20);ctx.fillStyle='#7890ac';ctx.fillText(`${fmt(min)}…${fmt(max)}`,10,top+38);
+        ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();let started=false;
+        rows.forEach((r,i)=>{const raw=key==='airborne'?(r.airborne?1:0):r[key],v=Number(raw);if(!Number.isFinite(v)){started=false;return}if(!started){ctx.moveTo(xs(i),ys(v));started=true}else ctx.lineTo(xs(i),ys(v));});ctx.stroke();
+      });
+      ctx.fillStyle='#98abc2';ctx.fillText(`${fmt(payload.t_start_s)}s`,pad.l,canvas.height-7);ctx.fillText(`${fmt(payload.t_end_s)}s`,canvas.width-pad.r-40,canvas.height-7);
+    }
+    async function analyze() {
+      const id=$('window').value; $('analyze').disabled=true; $('message').textContent=`正在判讀 ${id}…`;
+      try {
+        const [result,visual] = await Promise.all([
+          jsonFetch('/v1/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({window_id:id})}),
+          jsonFetch(`/v1/windows/${encodeURIComponent(id)}/visualization`)
+        ]);
+        $('result').classList.remove('hidden'); $('message').classList.add('hidden');
+        $('decision').textContent=result.constrained_decision; $('abstain').textContent=result.abstain ? `YES — ${result.abstain_reason}` : 'NO';
+        $('source').textContent=result.context_source; $('backend').textContent=result.effective_backend;
+        $('decisionCard').classList.toggle('abstain',result.abstain);
+        $('evidence').innerHTML=''; (result.evidence||[]).forEach(item=>{const li=document.createElement('li');li.textContent=item;$('evidence').appendChild(li);});
+        const ev=result.evidence_data||{}, fbg=ev.fbg||{}, flight=ev.flight_context||ev.real_flight_context||{};
+        $('validity').textContent=fmt(fbg.validity_ratio); $('rms').textContent=fmt(fbg.rms_nm); $('phase').textContent=fmt(flight.flight_phase);
+        $('attitude').textContent=`${fmt(flight.pitch_mean_deg)} / ${fmt(flight.roll_mean_deg)}`;
+        $('trace').innerHTML=''; (result.tool_trace||[]).forEach(row=>{const tr=document.createElement('tr');[row.step,row.requested_tool,row.executed_tool,row.reason_code,row.status].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});$('trace').appendChild(tr);});
+        $('json').textContent=JSON.stringify(result,null,2); drawSeries(visual);
+      } catch(error) { $('message').classList.remove('hidden'); $('message').textContent=`判讀失敗：${error.message}`; }
+      finally { $('analyze').disabled=false; }
+    }
+    $('analyze').addEventListener('click',analyze); $('refresh').addEventListener('click',load); load();
+  </script>
+</body>
+</html>
